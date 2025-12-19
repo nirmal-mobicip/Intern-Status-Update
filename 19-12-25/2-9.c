@@ -2,7 +2,32 @@
 // in x. Explain why. Use this observation to write a faster version of bitcount.
 
 #include<stdio.h>
-#include "base.h"
+
+void printB(int val)
+{
+    if (val > 1)
+    {
+        printB(val >> 1);
+    }
+    printf("%d", val & 1);
+}
+
+void printBinary(int val)
+{
+    printB(val);
+    printf("\n");
+}
+
+int no_of_bits(unsigned int x)
+{
+    int len = 1;
+    while (x > 1)
+    {
+        x >>= 1;
+        len++;
+    }
+    return len;
+}
 
 int countbits(int x){
     int cnt=0;
