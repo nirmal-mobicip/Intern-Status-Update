@@ -33,12 +33,18 @@ void expand(char* str1,char* str2){
 
 int main(){
 
-    char str1[] = "a-f-g0-8";
+    char str1[3][20] = {"a-b-f", "a-z0-9", "a-z"};
     char str2[1000];
-    expand(str1,str2);
-    for(int i=0;str2[i]!='\0';i++){
-        printf("%c",str2[i]);
+    for(int i=0;i<3;i++){
+        expand(str1[i],str2);
+        printf("%s\n",str2);
     }
-    printf("\n");
     return 0;
 }
+
+/*
+OUTPUT : 
+
+abcdef
+abcdefghijklmnopqrstuvwxyz0123456789
+abcdefghijklmnopqrstuvwxyz  */

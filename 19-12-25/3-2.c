@@ -21,6 +21,7 @@ void escape(char* s,char* t){
                 break;
         }
     }
+    t[ptr] = '\0';                                 // added null terminator
 }
 
 int main(){
@@ -30,6 +31,7 @@ int main(){
     while((ch=getchar())!=EOF){
         s[ptr++] = ch;
     }
+    s[ptr] = '\0';                                  // added null terminator
 
     // char s[100] = "hello\nguys\thowareyou";
 

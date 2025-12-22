@@ -3,7 +3,7 @@
 
 #include <stdio.h>
 
-#define BITS 8
+// #define BITS 8
 
 void printB(int val)
 {
@@ -31,20 +31,20 @@ int no_of_bits(unsigned int x)
     return len;
 }
 
-int rightrot(unsigned int x)
+int rightrot(unsigned int x,int no)
 {
     if((x&1)==0){
         return x>>1;
     }else{                                                          // rotate right by 1 bit
         x>>=1;
-        int val = 1<<BITS;
+        int val = 1<<(no-1);
         return x | val;
     }
 }
-int right_rotate(unsigned int x, int n){
+int right_rotate(unsigned int x, int n, int no){
     for(int i=0;i<n;i++){
-        x = rightrot(x);                                            // loop to rotate by n bits  (loop iterates for n times)
-        // printBinary(x);
+        x = rightrot(x,no);                                            // loop to rotate by n bits  (loop iterates for n times)
+        printBinary(x);
     }
     return x;
 }
@@ -53,6 +53,6 @@ int main()
 {
     int a = 19;
     printBinary(a);
-    printBinary(right_rotate(a,3));
+    printBinary(right_rotate(a,3,no_of_bits(a)));                      // modified to work only with the initial no of bits
     return 0;
 }
