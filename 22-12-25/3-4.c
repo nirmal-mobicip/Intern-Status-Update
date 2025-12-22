@@ -80,28 +80,36 @@ void itoa(int n, char s[])
 
 void my_itoa(int n, char s[])
 {
-    int i, sign_negative = 0;
-    if (n < 0){
-        sign_negative = 1;        
+    int ptr = 0;
+    if(n>0){
+       while(n>0){
+            s[ptr++] = (n%10 + '0');
+            n/=10;
+       }
+       s[ptr] = '\0';
+    }else if(n<0){
+        while(n<0){
+            s[ptr] = (((n%10)*-1) + '0');
+            // printf("n mod 10 = %d s[ptr] = %c\n",(n%10)*-1,s[ptr]);
+            ptr++;
+            n/=10;
+       }
+       s[ptr++] = '-';
+       s[ptr] = '\0';
+    }else{
+        s[ptr++] = '0';
+        s[ptr] = '\0';
     }
-    i = 0;
-    do
-    {                          /* generate digits in reverse order */
-        printf("%c \n",s[i]);
-        s[i++] = n % 10 + '0'; /* get next digit */
-    } while ((n /= 10) > 0); /* delete it */
-    if (sign_negative)
-        s[i++] = '-';
-    s[i] = '\0';
     reverse(s);
 }
 
 int main()
 {
 
-    int a = INT_MIN;
+    int a = 0;
     char str[100];
     my_itoa(a, str);
+
     printf("%s\n", str);
 
     return 0;
