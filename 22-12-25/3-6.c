@@ -1,3 +1,9 @@
+
+// Exercise 3-6. Write a version of itoa that accepts three arguments instead of two. The third
+// argument is a minimum field width; the converted number must be padded with blanks on the
+// left if necessary to make it wide enough.
+
+
 #include<stdio.h>
 #include<string.h>
 
@@ -24,7 +30,6 @@ void my_itoa(int n, char s[],int w)
     }else if(n<0){
         while(n<0){
             s[ptr] = (((n%10)*-1) + '0');
-            // printf("n mod 10 = %d s[ptr] = %c\n",(n%10)*-1,s[ptr]);
             ptr++;
             n/=10;
        }
@@ -32,8 +37,8 @@ void my_itoa(int n, char s[],int w)
     }else{
         s[ptr++] = '0';
     }
-    for(int i=ptr;i<w;i++){
-        s[ptr++] = ' ';
+    for(int i=ptr;i<w;i++){                                                 // adds minimum no of spaces if necessary at the end and reverses   
+        s[ptr++] = ' ';                                                     // so the space comes at begining
     }
     s[ptr] = '\0';
     reverse(s);

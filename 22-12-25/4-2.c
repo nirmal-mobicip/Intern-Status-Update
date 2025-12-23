@@ -1,18 +1,24 @@
+
+// Exercise 4-2. Extend atof to handle scientific notation of the form
+// 123.45e-6
+// where a floating-point number may be followed by e or E and an optionally signed exponent.
+
+
 #include<stdio.h>
 
 double my_atof(char str[]){
     double res = 0;
     int i=0, sign,divide=1,power=0;
-    while(str[i]!='\0' && str[i]==' '){
+    while(str[i]!='\0' && str[i]==' '){                         // skip spaces
         i++;
     }
-    if(str[i]=='-'){
+    if(str[i]=='-'){                                            // identify sign
         sign = -1;
         i++;
     }else{
         sign = 1;
     }
-    while(str[i]!='\0' && str[i]!='e' && str[i]!='E'){
+    while(str[i]!='\0' && str[i]!='e' && str[i]!='E'){          // traverse digits untill e or E
         if(str[i]=='.'){
             if(power!=0) return -1;
             power = 1;
@@ -29,16 +35,16 @@ double my_atof(char str[]){
         }
         i++;
     }
-    if(str[i]=='E' || str[i]=='e'){
+    if(str[i]=='E' || str[i]=='e'){                              // if E or e is found
         i++;
         int negative=0,exp=0,value=1;
-        if(str[i]=='-'){
+        if(str[i]=='-'){                                         // identify exponent sign
             negative = 1;
             i++;
         }else if(str[i]=='+'){
             i++;
         }
-        while(str[i]!='\0'){
+        while(str[i]!='\0'){                                    // traverse exponent power value
             if(str[i]>='0' && str[i]<='9'){
                 exp = (exp*10) + (str[i]-'0');
             }else{
