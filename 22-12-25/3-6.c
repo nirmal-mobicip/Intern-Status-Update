@@ -48,7 +48,7 @@ int main(){
 
     int a = 1;
     char str[100];
-    my_itoa(a,str,0);
+    my_itoa(a,str,3);
     printf("*%s\n",str);
 
     return 0;
