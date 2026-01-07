@@ -47,9 +47,9 @@ void month_day(int year, int day_of_year, int *month, int *date)
 
 int main()
 {
-    // int month, date;
-    // month_day(2004, 318, &month, &date);
-    // printf("%d-%d\n", date, month);
-    printf("%d\n",day_of_year(2003,2,29));
+    int month, date;
+    month_day(2004, 318, &month, &date);
+    printf("%d-%d\n", date, month);
+    // printf("%d\n",day_of_year(2004,2,29));
     return 0;
 }

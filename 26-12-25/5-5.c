@@ -50,6 +50,6 @@ int main(){
 
     char s1[] = "heloword";
     char s2[] = "heloworld";
-    printf("%d\n",my_strncmp(s1,s2,8));
+    printf("%d\n",my_strncmp(s1,s2,7));
     return 0;
 }
