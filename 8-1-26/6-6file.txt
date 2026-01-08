@@ -1,0 +1,5 @@
+#define MAX maximum
+#define MIN minimum
+
+int a = MAX;
+int b = MIN;
