@@ -1,4 +1,4 @@
 int alpha beta gamma;
 alpha = beta + gamma;
 beta = alpha * gamma;
-alpha alpha alpha;
+alpha alpha alpha;6-3   

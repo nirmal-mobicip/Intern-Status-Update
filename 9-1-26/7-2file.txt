@@ -1,0 +1,14 @@
+Hello World!	This line has a TAB.
+This line is short.
+This line is intentionally made very very very very very very very long to test line breaking behavior.
+
+Binary-like data below:
+ABCDEF
+Line with belland backspacecharacters.
+Mixing printable and non-printable:
+Start�MiddleEnd
+
+Multiple	newlines
+
+
+End of test.
