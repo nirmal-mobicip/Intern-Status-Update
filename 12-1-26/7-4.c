@@ -1,3 +1,6 @@
+// Exercise 7-4. Write a private version of scanf analogous to minprintf from the previous
+// section.
+
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
