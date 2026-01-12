@@ -84,15 +84,14 @@ int str_case_cmp(void *s1, void *s2)
            tolower((unsigned char)*p2);
 }
 
-
 void sort(char *lineptr[], int nlines, int (*compare)(void *, void *), int reverse)
 {
     for (int j = 0; j < nlines; j++)
     {
         int swapped = 0;
         for (int i = 0; i < nlines - 1 - j; i++)
-        {   
-            int cond = compare(lineptr[i],lineptr[i + 1]);
+        {
+            int cond = compare(lineptr[i], lineptr[i + 1]);
 
             if (reverse)
                 cond = -cond;
@@ -100,10 +99,11 @@ void sort(char *lineptr[], int nlines, int (*compare)(void *, void *), int rever
             if (cond > 0)
             {
                 swap(&lineptr[i], &lineptr[i + 1]);
-                swapped=1;
+                swapped = 1;
             }
         }
-        if (!swapped) break;
+        if (!swapped)
+            break;
     }
 }
 
@@ -136,14 +136,15 @@ int main(int argc, char *argv[])
             numeric = 1;
         else if (strcmp(argv[i], "-r") == 0)
             rev = 1;
-        else if (strcmp(argv[i],"-f")==0){
+        else if (strcmp(argv[i], "-f") == 0)
+        {
             not_case_sensitive = 1;
         }
     }
 
     int nlines = readlines(lineptr, MAXLINES);
 
-    sort(lineptr, nlines, numeric ? numcmp : (not_case_sensitive? str_case_cmp : str_cmp), rev);
+    sort(lineptr, nlines, numeric ? numcmp : (not_case_sensitive ? str_case_cmp : str_cmp), rev);
 
     for (int i = 0; i < nlines; i++)
     {
