@@ -108,9 +108,9 @@ void broadcast(int sender,int serversock,char* buffer)
 int main(void)
 {
 
-    fd_set readfds;
-    FD_ZERO(&readfds);
-    FD_ZERO(&master);
+    fd_set readfds;             // structure for select()
+    FD_ZERO(&readfds);          // temperoary
+    FD_ZERO(&master);           // main
 
     struct addrinfo hints, *res;
     struct sockaddr_storage client_info;
@@ -137,18 +137,18 @@ int main(void)
     {
         printf("Listening...\n");
         readfds = master;
-        int res = select(nfds, &readfds, NULL, NULL, NULL);
-        if (res > 0)
+        int res = select(nfds, &readfds, NULL, NULL, NULL);         // waits for any incoming connection or a message from connected client 
+        if (res > 0)    
         {
-            for (int i = 0; i < nfds; i++)
+            for (int i = 0; i < nfds; i++)                          // traverse all fd's
             {
-                if (FD_ISSET(i, &readfds))
+                if (FD_ISSET(i, &readfds))                          // checks if the fd is set
                 {
-                    if (i == sockfd)
+                    if (i == sockfd)                                // if its server socket, then accept client
                     {
                         clientfd = accept_client(&client_info, sockfd);
                     }
-                    else
+                    else                                            // else its client fd, so receive text and broadcast
                     {
                         char buffer[100];
                         int n = recv(i, buffer, sizeof(buffer), 0);

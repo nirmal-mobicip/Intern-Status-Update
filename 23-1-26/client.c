@@ -38,7 +38,7 @@ int get_server_socket(struct addrinfo *res)
 int main()
 {
 
-    fd_set readfds, master;
+    fd_set readfds, master;                         //structure for select()
     FD_ZERO(&readfds);
     FD_ZERO(&master);
 
@@ -57,7 +57,7 @@ int main()
 
     getaddrinfo(IP, PORT, &hints, &res);
 
-    clientfd = get_server_socket(res);
+    clientfd = get_server_socket(res);                  // get socket from server
 
     freeaddrinfo(res);
 
@@ -74,7 +74,7 @@ int main()
     while (1)
     {
         readfds = master;
-        int res = select(nfds, &readfds, NULL, NULL, NULL);
+        int res = select(nfds, &readfds, NULL, NULL, NULL);     // wait for any stdin input or input from socket
 
         if (res > 0)
         {
@@ -82,7 +82,7 @@ int main()
             for (int i = 0; i < nfds; i++)
             {
 
-                if (FD_ISSET(i, &readfds) && i == STDIN_FILENO)
+                if (FD_ISSET(i, &readfds) && i == STDIN_FILENO)     // read from stdin and send to server using send()
                 {
                     int n = read(i, buff, sizeof(buff));
                     buff[n] = '\0';
@@ -91,7 +91,7 @@ int main()
                         printf("Error Sending to server\n");
                     }
                 }
-                else if (FD_ISSET(i, &readfds) && i == clientfd)
+                else if (FD_ISSET(i, &readfds) && i == clientfd)     // read from socket and print the broadcasted message
                 {
                     int n = recv(i, buff, sizeof(buff), 0);
                     if (n == 0)
