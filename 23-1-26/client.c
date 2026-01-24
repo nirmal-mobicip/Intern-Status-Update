@@ -11,7 +11,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
-#define IP "localhost"
+#define IP "192.168.31.65"
 #define PORT "8080"
 
 int get_server_socket(struct addrinfo *res)
@@ -99,12 +99,14 @@ int main()
                         printf("Connection Closed\n");
                         close(i);
                         FD_CLR(i, &readfds);
+                        exit(EXIT_FAILURE);
                     }
                     else if (n < 0)
                     {
                         printf("Error Occured while recv()\n");
                         close(i);
                         FD_CLR(i, &readfds);
+                        exit(EXIT_FAILURE);
                     }
                     else
                     {
