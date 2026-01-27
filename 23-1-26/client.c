@@ -111,7 +111,7 @@ int main()
                     else
                     {
                         buff[n] = '\0';
-                        printf("Broadcast Message : %s\n", buff);
+                        printf("Received Message from server : %s\n", buff);
                     }
                 }
             }

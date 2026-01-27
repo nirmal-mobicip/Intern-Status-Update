@@ -87,30 +87,13 @@ int accept_client(struct sockaddr_storage *client_info, int sockfd)
     return clientfd;
 }
 
-void broadcast(int sender,int serversock,char* buffer)
-{
-    for (int j = 0; j < nfds; j++)
-    {
-        if (j != sender && j != serversock && FD_ISSET(j, &master))
-        {
-            if ((send(j, buffer, strlen(buffer), 0)) == -1)
-            {
-                printf("Failed to send to socket %d\n", j);
-            }
-            else
-            {
-                printf("Sent to %d\n", j);
-            }
-        }
-    }
-}
 
 int main(void)
 {
 
-    fd_set readfds;             // structure for select()
-    FD_ZERO(&readfds);          // temperoary
-    FD_ZERO(&master);           // main
+    fd_set readfds;    // structure for select()
+    FD_ZERO(&readfds); // temperoary
+    FD_ZERO(&master);  // main
 
     struct addrinfo hints, *res;
     struct sockaddr_storage client_info;
@@ -133,37 +116,51 @@ int main(void)
     FD_SET(sockfd, &master);
     nfds = sockfd + 1;
 
+    printf("Listening...\n");
     while (1)
     {
-        printf("Listening...\n");
         readfds = master;
-        int res = select(nfds, &readfds, NULL, NULL, NULL);         // waits for any incoming connection or a message from connected client 
-        if (res > 0)    
+        int res = select(nfds, &readfds, NULL, NULL, NULL); // waits for any incoming connection or a message from connected client
+        if (res > 0)
         {
-            for (int i = 0; i < nfds; i++)                          // traverse all fd's
+            for (int i = 0; i < nfds; i++) // traverse all fd's
             {
-                if (FD_ISSET(i, &readfds))                          // checks if the fd is set
+                if (FD_ISSET(i, &readfds)) // checks if the fd is set
                 {
-                    if (i == sockfd)                                // if its server socket, then accept client
+                    if (i == sockfd) // if its server socket, then accept client
                     {
                         clientfd = accept_client(&client_info, sockfd);
                     }
-                    else                                            // else its client fd, so receive text and broadcast
+                    else // else its client fd, so receive text and broadcast
                     {
                         char buffer[100];
                         int n = recv(i, buffer, sizeof(buffer), 0);
                         if (n <= 0)
                         {
-                            printf("Socket Closed\n");
                             close(i);
                             FD_CLR(i, &master);
+                            printf("Socket Closed\n");
                         }
                         else
                         {
                             // broadcast
                             buffer[n] = '\0';
-                            printf("Broadcast : %s\n", buffer);
-                            broadcast(i,sockfd,buffer);
+
+                            if (strncmp("exit", buffer,4) == 0)
+                            {
+                                close(i);
+                                FD_CLR(i, &master);
+                                printf("Socket Closed\n");
+                                break;
+                            }
+
+                            printf("Echoeing : %s\n", buffer);
+                            if(send(i, buffer, sizeof(buffer), 0)==-1){
+                                printf("Failed to send to socket %d\n",i);
+                            }else{
+                                printf("Echo sent\n");
+                            }
+                            // broadcast(i,sockfd,buffer);
                         }
                     }
                 }
