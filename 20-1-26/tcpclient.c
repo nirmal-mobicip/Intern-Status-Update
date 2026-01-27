@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <errno.h>
 
 #define SERVERDOMAIN "localhost"
 #define SERVERPORT "8080"
