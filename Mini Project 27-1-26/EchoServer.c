@@ -193,7 +193,7 @@ int main()
     int server_socket;
     struct addrinfo hints, *res, *p;
 
-    hints.ai_family = AF_INET6;
+    hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
 

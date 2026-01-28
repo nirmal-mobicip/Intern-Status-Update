@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
     if((n = recvfrom(sockfd,buffer,sizeof(buffer),0,(struct sockaddr*)&client_addr,&addr_len))==-1){
         printf("Failed to recvfron()\n");
     }
-
+    buffer[n] = '\0';
     char ipaddress[INET6_ADDRSTRLEN];
     getClientIP(&client_addr, ipaddress);
     printf("Broadcast from client : %s\nMessage : %s\n", ipaddress,buffer);

@@ -47,10 +47,7 @@ typedef struct server_data
 
 void pack_client_data(const Client_Data *data, char *buffer)
 {
-    snprintf(buffer, CLIENT_BUFFER_SIZE,
-             "%-*.*s%-*.*s",
-             MAX_TEXT_SIZE, MAX_TEXT_SIZE, data->message,
-             32, 32, data->timeStr);
+    snprintf(buffer, CLIENT_BUFFER_SIZE,"%-*.*s%-*.*s",MAX_TEXT_SIZE, MAX_TEXT_SIZE, data->message,32, 32, data->timeStr);
 }
 
 void unpack_client_data(Client_Data *data, const char *buffer)

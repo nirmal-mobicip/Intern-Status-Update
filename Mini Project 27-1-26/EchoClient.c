@@ -65,7 +65,7 @@ int main()
     int client_socket, flag = 1;
     struct addrinfo hints, *res, *p;
     memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET6;
+    hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     getaddrinfo(IP, PORT, &hints, &res);
     client_socket = get_server_socket(res);
