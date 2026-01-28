@@ -15,7 +15,7 @@
 
 #include "datapack.h"
 
-#define IP "2409:40f4:2114:97e5:df3b:66f5:e0ad:6eed"
+#define IP "localhost"
 #define PORT "8080"
 
 void getCurrentTime(char *buf, size_t size)
