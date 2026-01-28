@@ -3,31 +3,30 @@
 #include <stdint.h>
 #include <arpa/inet.h>
 
-static inline uint64_t htonll(uint64_t x) {
+static inline uint64_t htonll(uint64_t x)
+{
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     return ((uint64_t)htonl(x & 0xFFFFFFFFULL) << 32) |
-            htonl(x >> 32);
+           htonl(x >> 32);
 #else
     return x;
 #endif
 }
 
-static inline uint64_t ntohll(uint64_t x) {
+static inline uint64_t ntohll(uint64_t x)
+{
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     return ((uint64_t)ntohl(x & 0xFFFFFFFFULL) << 32) |
-            ntohl(x >> 32);
+           ntohl(x >> 32);
 #else
     return x;
 #endif
 }
-
 
 #define MAX_TEXT_SIZE 100
 
 #define CLIENT_BUFFER_SIZE (MAX_TEXT_SIZE + (32) + (1))
 #define SERVER_BUFFER_SIZE (CLIENT_BUFFER_SIZE + sizeof(int64_t) * 2)
-
-
 
 typedef struct client_data
 {
@@ -81,4 +80,60 @@ void unpack_server_data(Server_Data *data, const char *buffer)
     data->user_count = ntohll(data->user_count);
     memcpy(&data->total_count, buffer + CLIENT_BUFFER_SIZE + sizeof(int64_t), sizeof(int64_t));
     data->total_count = ntohll(data->total_count);
+}
+
+ssize_t sendall(int fd, const void *buffer, size_t n, int flags)
+{
+    ssize_t sent = 0;
+    const char *ptr = (const char *)buffer;
+    while (sent < n)
+    {
+        ssize_t r = send(fd, ptr + sent, n-sent, flags);
+        if (r <= 0)
+        {
+            perror("send()");
+            return -1;
+        }
+        sent += r;
+    }
+    return sent;
+}
+
+ssize_t recvall(int fd, void *buffer, size_t n, int flags)
+{
+    ssize_t received = 0;
+    char *ptr = (char *)buffer;
+
+    while (received < n)
+    {
+        ssize_t r = recv(fd, ptr + received, n-received, flags);
+        if (r == 0)
+        {
+            return 0;
+        }
+        else if (r < 0)
+        {
+            perror("recv()");
+            return -1;
+        }
+        else
+        {
+            received += r;
+        }
+    }
+    return received;
+}
+
+char* trim(char arr[])
+{
+    char *res = (char*)malloc(MAX_TEXT_SIZE*sizeof(char));
+    int i = MAX_TEXT_SIZE-1,j;
+    while(arr[i]==' ' || arr[i]=='\0'){
+        i--;
+    }
+    for(j=0;j<=i;j++){
+        res[j]=arr[j];
+    }
+    res[j] = '\0';
+    return res;
 }
