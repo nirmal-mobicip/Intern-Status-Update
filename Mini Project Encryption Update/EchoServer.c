@@ -30,6 +30,7 @@ typedef struct client_fd
     int echo_count;
     struct sockaddr_storage addr;
     char ipaddress[INET6_ADDRSTRLEN];
+    unsigned short port;
     SSL *client_ssl_socket;
 } Client_FD;
 
@@ -37,7 +38,6 @@ Client_FD cfds[MAX_SOCKETS]; // client echo count info
 int n_sockets = 0;           // no of clients connected
 
 long total_echo = 0; // total count of echoes
-
 
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -66,49 +66,46 @@ int addOrUpdateUser(Client_FD *cfd)
 {
     pthread_mutex_lock(&lock);
     int found = 0, i, res;
-    for (i = 0; i < n_sockets; i++)
-    {
-        if (strcmp(cfd->ipaddress, cfds[i].ipaddress) == 0)
-        {
-            found = 1;
-            break;
-        }
-    }
-    if (found)
-    {
-        if (cfds[i].fd != -1)
-        {
+    // for (i = 0; i < n_sockets; i++)
+    // {
+    //     if (strcmp(cfd->ipaddress, cfds[i].ipaddress) == 0)
+    //     {
+    //         found = 1;
+    //         break;
+    //     }
+    // }
+    // if (found)
+    // {
+    //     if (cfds[i].fd != -1)
+    //     {
 
-            // SSL_shutdown(cfds[i].client_ssl_socket);
-            // SSL_free(cfds[i].client_ssl_socket);
+    //         // SSL_shutdown(cfds[i].client_ssl_socket);
+    //         // SSL_free(cfds[i].client_ssl_socket);
 
-            shutdown(cfds[i].fd, SHUT_RDWR); // shutdown old thread socket
-            close(cfds[i].fd);               // close old thread socket
-            printf("Active Client with old session closed!!\n");
-        }
-        cfds[i].client_ssl_socket = cfd->client_ssl_socket;
-        cfds[i].fd = cfd->fd;
-        cfds[i].addr = cfd->addr;
-        res = i;
-        printf("Exisiting Client Connected : %s\n", cfds[res].ipaddress);
-    }
-    else
-    {
-        cfds[n_sockets].addr = cfd->addr;
-        cfds[n_sockets].fd = cfd->fd;
-        cfds[n_sockets].echo_count = cfd->echo_count;
-        cfds[n_sockets].client_ssl_socket = cfd->client_ssl_socket;
-        strcpy(cfds[n_sockets].ipaddress, cfd->ipaddress);
-        res = n_sockets;
-        n_sockets++;
-        printf("New Client Connected : %s\n", cfds[res].ipaddress);
-    }
+    //         shutdown(cfds[i].fd, SHUT_RDWR); // shutdown old thread socket
+    //         close(cfds[i].fd);               // close old thread socket
+    //         printf("Active Client with old session closed!!\n");
+    //     }
+    //     cfds[i].client_ssl_socket = cfd->client_ssl_socket;
+    //     cfds[i].fd = cfd->fd;
+    //     cfds[i].addr = cfd->addr;
+    //     res = i;
+    //     printf("Exisiting Client Connected : %s\n", cfds[res].ipaddress);
+    // }
+
+    cfds[n_sockets].addr = cfd->addr;
+    cfds[n_sockets].fd = cfd->fd;
+    cfds[n_sockets].echo_count = cfd->echo_count;
+    cfds[n_sockets].client_ssl_socket = cfd->client_ssl_socket;
+    strcpy(cfds[n_sockets].ipaddress, cfd->ipaddress);
+    cfds[n_sockets].port = cfd->port;
+    res = n_sockets;
+    n_sockets++;
+    printf("New Client Connected : %s:%u\n", cfds[res].ipaddress, cfds[res].port);
+
     pthread_mutex_unlock(&lock);
     return res;
 }
-
-
-
 
 void *thread_routene(void *arg)
 {
@@ -119,13 +116,6 @@ void *thread_routene(void *arg)
 
     while (flag)
     {
-        // if (cfds[pos].fd != cfd->fd)
-        // {
-        //     printf("Same user logged in with other terminal\nTerminating this session....\n");
-        //     close(cfd->fd);
-        //     printf("Connection Closed!\n");
-        //     break;
-        // }
         char cbuffer[CLIENT_BUFFER_SIZE], sbuffer[SERVER_BUFFER_SIZE];
         int n;
         if ((n = TLS_recvall(cfd->client_ssl_socket, cbuffer, CLIENT_BUFFER_SIZE)) > 0)
@@ -136,7 +126,7 @@ void *thread_routene(void *arg)
 
             if (strncmp("exit", cdata.message, 4) == 0)
             {
-                printf("Socket connection %d Closed\n", cfd->fd);
+                printf("Socket Connection Closed : %s:%u\n", cfd->ipaddress, cfd->port);
                 flag = 0;
 
                 SSL_shutdown(cfd->client_ssl_socket);
@@ -168,7 +158,7 @@ void *thread_routene(void *arg)
             else
             {
                 char *message = trim(cdata.message);
-                printf("Echo Client : %s\n", cfds[pos].ipaddress);
+                printf("Echo Client : %s:%u\n", cfds[pos].ipaddress, cfds[pos].port);
                 printf("Echo Message : %s\n", message);
                 printf("Echo Time : %s\n", cdata.timeStr);
                 putchar('\n');
@@ -177,7 +167,7 @@ void *thread_routene(void *arg)
         }
         else if (n == 0)
         {
-            printf("Socket Connection Closed : %s\n", cfd->ipaddress);
+            printf("Socket Connection Closed : %s:%u\n", cfd->ipaddress, cfd->port);
             flag = 0;
 
             SSL_shutdown(cfd->client_ssl_socket);
@@ -190,7 +180,7 @@ void *thread_routene(void *arg)
         else
         {
             perror("recv()");
-            exit(EXIT_FAILURE);
+            break;
         }
     }
     free(arg);
@@ -203,7 +193,7 @@ int main()
     SSL_library_init();
     SSL_load_error_strings();
 
-    SSL_CTX *ctx = SSL_CTX_new(TLS_server_method());
+    SSL_CTX *ctx = SSL_CTX_new(TLS_server_method()); // context
     SSL_CTX_use_certificate_file(ctx, "cert.pem", SSL_FILETYPE_PEM);
     SSL_CTX_use_PrivateKey_file(ctx, "key.pem", SSL_FILETYPE_PEM);
 
@@ -219,7 +209,7 @@ int main()
     int server_socket;
     struct addrinfo hints, *res, *p;
 
-    hints.ai_family = AF_INET;
+    hints.ai_family = AF_INET6;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
 
@@ -235,6 +225,11 @@ int main()
         {
             continue;
         }
+
+        int off = 0;
+        socklen_t len = sizeof(off);
+        getsockopt(server_socket, IPPROTO_IPV6, IPV6_V6ONLY, &off, &len);
+        printf("IPV6 Only : %s\n",off?"YES":"NO");
 
         if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) == -1)
         {
@@ -266,7 +261,6 @@ int main()
 
     printf("Echo Server Listening on port %s\n", PORT);
 
-
     while (1)
     {
         struct sockaddr_storage remote_info;
@@ -277,6 +271,8 @@ int main()
             perror("accept()");
             continue;
         }
+
+        struct sockaddr_in *a = (struct sockaddr_in *)&remote_info;
 
         SSL *client_ssl_socket = SSL_new(ctx);
         SSL_set_fd(client_ssl_socket, client_socket);
@@ -289,6 +285,14 @@ int main()
         cfd->addr = remote_info;
         cfd->echo_count = 0;
         cfd->client_ssl_socket = client_ssl_socket;
+        if (remote_info.ss_family == AF_INET)
+        {
+            cfd->port = ntohs(((struct sockaddr_in *)&remote_info)->sin_port);
+        }
+        else
+        {
+            cfd->port = ntohs(((struct sockaddr_in6 *)&remote_info)->sin6_port);
+        }
         getClientIP(&remote_info, cfd->ipaddress);
         pthread_create(&pid, NULL, thread_routene, cfd); // create new thread for each client
     }

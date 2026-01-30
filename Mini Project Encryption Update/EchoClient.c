@@ -19,7 +19,6 @@
 
 #include "datapack.h"
 
-#define IP "localhost"
 #define PORT "8080"
 
 void getCurrentTime(char *buf, size_t size)
@@ -63,8 +62,12 @@ int get_server_socket(struct addrinfo *res)
     return sockfd;
 }
 
-int main()
+int main(int argc,char* argv[])
 {
+    if(argc<2){
+        printf("Specify Server IP Address\n");
+        exit(EXIT_FAILURE);
+    }
 
     SSL_library_init();
     SSL_load_error_strings();
@@ -74,9 +77,9 @@ int main()
     int client_socket, flag = 1;
     struct addrinfo hints, *res, *p;
     memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
+    hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
-    getaddrinfo(IP, PORT, &hints, &res);
+    getaddrinfo(argv[1], PORT, &hints, &res);
     client_socket = get_server_socket(res);
     freeaddrinfo(res);
 

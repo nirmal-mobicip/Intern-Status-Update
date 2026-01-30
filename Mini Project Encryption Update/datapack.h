@@ -88,7 +88,6 @@ ssize_t TLS_sendall(SSL* client_ssl_socket, const void *buffer, size_t n)
         ssize_t r = SSL_write(client_ssl_socket, ptr + sent, n-sent);
         if (r <= 0)
         {
-            perror("send()");
             return -1;
         }
         sent += r;
@@ -110,7 +109,6 @@ ssize_t TLS_recvall(SSL* client_ssl_socket, void *buffer, size_t n)
         }
         else if (r < 0)
         {
-            perror("recv()");
             return -1;
         }
         else
