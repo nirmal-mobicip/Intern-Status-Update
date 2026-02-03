@@ -1,294 +1,346 @@
-// #define _POSIX_C_SOURCE 200112L
-// #define _POSIX_C_SOURCE 200809L
-
+#define _POSIX_C_SOURCE 200809L
 
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
-#include <sys/types.h>
+#include <string.h>
+#include <strings.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <arpa/inet.h>
-#include <netinet/in.h>
-#include <unistd.h>
 #include <curl/curl.h>
+#include <pthread.h>
+#include <signal.h>
 
-#define MYPORT "8080"
-#define BACKLOG 10
+#define LISTEN_PORT "8080"
+#define BUF_SIZE 16384
 
-typedef struct url_info
+typedef struct
 {
     char *scheme;
     char *host;
     char *port;
     char *path;
-} URL;    
-typedef struct packet_info
+} URL;
+
+typedef struct
 {
     char *method;
-    URL url;
     char *version;
-    char *user_agent;
-    char *accept;
+    URL url;
+} Request;
 
-} Packet;
+typedef struct
+{
+    int from;
+    int to;
+} Pipe;
 
+static int send_all(int fd, const char *buf, int len)
+{
+    int sent = 0;
+    while (sent < len)
+    {
+        int n = send(fd, buf + sent, len - sent, 0);
+        if (n <= 0)
+            return -1;
+        sent += n;
+    }
+    return sent;
+}
+
+static void forward_http_request(int server_fd, Request *req, const char *buf, int total)
+{
+    char out[BUF_SIZE];
+    int n = 0;
+
+    /* Request line */
+    n += snprintf(out + n, sizeof(out) - n,
+                  "%s %s %s\r\n",
+                  req->method,
+                  req->url.path ? req->url.path : "/",
+                  req->version);
+
+    /* Copy headers line by line */
+    const char *p = strstr(buf, "\r\n");
+    if (!p)
+        return;
+    p += 2;
+
+    int has_host = 0;
+    int has_connection = 0;
+
+    while (p < buf + total && strncmp(p, "\r\n", 2) != 0)
+    {
+        const char *line_end = strstr(p, "\r\n");
+        if (!line_end)
+            break;
+
+        /* Skip Proxy-Connection */
+        if (strncasecmp(p, "Proxy-Connection:", 17) == 0)
+            goto next;
+
+        if (strncasecmp(p, "Host:", 5) == 0)
+            has_host = 1;
+
+        if (strncasecmp(p, "Connection:", 11) == 0)
+            has_connection = 1;
+
+        int len = line_end - p + 2;
+        memcpy(out + n, p, len);
+        n += len;
+
+    next:
+        p = line_end + 2;
+    }
+
+    if (!has_host)
+        n += snprintf(out + n, sizeof(out) - n,
+                      "Host: %s\r\n", req->url.host);
+
+    if (!has_connection)
+        n += snprintf(out + n, sizeof(out) - n,
+                      "Connection: close\r\n");
+
+    memcpy(out + n, "\r\n", 2);
+    n += 2;
+
+    send_all(server_fd, out, n);
+}
+
+/* ===================== TUNNEL ====================== */
+
+void *tunneler(void *arg)
+{
+    Pipe *fd = (Pipe *)arg;
+    char buffer[BUF_SIZE];
+    int n;
+
+    while (1)
+    {
+        n = recv(fd->from, buffer, sizeof(buffer), 0);
+        if (n == 0)
+            break; // peer closed cleanly
+        if (n < 0)
+            break;
+        if (send_all(fd->to, buffer, n) < 0)
+            break;
+    }
+
+    shutdown(fd->to, SHUT_WR);
+    shutdown(fd->from, SHUT_RD);
+    printf("Connection Closed\n");
+    return NULL;
+}
+
+void tunnel_https(int client_fd, int server_fd)
+{
+    pthread_t t1, t2;
+    Pipe *c2s = malloc(sizeof(*c2s));
+    Pipe *s2c = malloc(sizeof(*s2c));
+
+    *c2s = (Pipe){client_fd, server_fd};
+    *s2c = (Pipe){server_fd, client_fd};
+
+    pthread_create(&t1, NULL, tunneler, c2s);
+    pthread_create(&t2, NULL, tunneler, s2c);
+
+    pthread_join(t1, NULL);
+    pthread_join(t2, NULL);
+
+    close(client_fd);
+    close(server_fd);
+}
+
+static void die(const char *msg)
+{
+    perror(msg);
+    exit(EXIT_FAILURE);
+}
 
 static char *normalize_url(const char *scheme, const char *url)
 {
     if (strstr(url, "://"))
         return strdup(url);
 
-    char *full = malloc(strlen(scheme) + strlen(url) + 4);    
+    char *full = malloc(strlen(scheme) + strlen(url) + 4);
     sprintf(full, "%s://%s", scheme, url);
     return full;
-}    
+}
 
-int parse_url(const char *scheme, const char *url, URL *out)
+static int parse_url(const char *scheme, const char *url, URL *out)
 {
-    CURLU *u = NULL;
-    CURLUcode rc;
-    char *full_url = NULL;
+    CURLU *u = curl_url();
+    char *full = normalize_url(scheme, url);
 
-    memset(out, 0, sizeof(*out));
+    if (!u || curl_url_set(u, CURLUPART_URL, full, 0) != CURLUE_OK)
+        return -1;
 
-    full_url = normalize_url(scheme, url);
-
-    u = curl_url();
-    if (!u)
-        goto fail;
-
-    if (curl_url_set(u, CURLUPART_URL, full_url, 0) != CURLUE_OK)    
-        goto fail;
-
-    curl_url_get(u, CURLUPART_SCHEME, &out->scheme, 0);    
+    curl_url_get(u, CURLUPART_SCHEME, &out->scheme, 0);
     curl_url_get(u, CURLUPART_HOST, &out->host, 0);
+    curl_url_get(u, CURLUPART_PATH, &out->path, 0);
 
-    rc = curl_url_get(u, CURLUPART_PATH, &out->path, 0);
-    if (rc != CURLUE_OK)
-        out->path = strdup("/");
-
-    rc = curl_url_get(u, CURLUPART_PORT, &out->port, 0);    
-    if (rc == CURLUE_NO_PORT)
-    {
+    if (curl_url_get(u, CURLUPART_PORT, &out->port, 0) != CURLUE_OK)
         out->port = strdup(strcmp(out->scheme, "https") == 0 ? "443" : "80");
-    }    
 
     curl_url_cleanup(u);
-    free(full_url);
+    free(full);
     return 0;
-
-fail:    
-    if (u)
-        curl_url_cleanup(u);
-    free(full_url);    
-    return -1;
-}    
-
-
-void parse_packet(Packet *res, char *buffer)
-{
-    char* ptr = buffer;
-    char* full_url;
-    res->method = buffer;   //extract buffer
-    while(*ptr!=' '){
-        ptr++;
-    }
-    *ptr = '\0';
-
-    
-    ptr++;
-    full_url = ptr;         // extract full url+path
-    while(*ptr!=' '){
-        ptr++;
-    }
-    *ptr = '\0';
-    ptr++;
-    res->version = ptr;     // extract version
-    while(*ptr!='\r'){
-        ptr++;
-    }
-    *ptr = '\0';
-    ptr++;  
-    while(*ptr!=' '){
-        ptr++;
-    }
-    ptr++;
-    res->url.host = ptr;        // extract domain
-    while(*ptr!='\r'){
-        ptr++;
-    }
-    
-    *ptr = '\0';
-    ptr++;
-    while(*ptr!=' '){
-        ptr++;
-    }
-    ptr++;
-    res->user_agent = ptr;  // extract user agent
-    while(*ptr!='\r'){
-        ptr++;
-    }
-    *ptr = '\0';
-    ptr++;
-    while(*ptr!=' '){
-        ptr++;
-    }
-    ptr++;
-    res->accept = ptr;
-    while(*ptr!='\r'){
-        ptr++;
-    }
-    *ptr = '\0';
-    
-    if(strcmp(res->method,"CONNECT")==0){           // set port
-        parse_url("https",full_url,&res->url);
-    }else{
-        parse_url("http",full_url,&res->url);
-    }
 }
 
-void getClientIP(struct sockaddr_storage *client_addr, char *ipaddress)
+static int parse_request(char *buf, Request *req)
 {
-    void *addr;
-    if (client_addr->ss_family == AF_INET)
-    {
-        struct sockaddr_in *ipv4 = (struct sockaddr_in *)client_addr;
-        addr = &(ipv4->sin_addr);
-    }
-    else if (client_addr->ss_family == AF_INET6)
-    {
-        struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)client_addr;
-        addr = &(ipv6->sin6_addr);
-    }
-    else
-    {
-        strcpy(ipaddress, "Unknown Address Family");
-        return;
-    }
-    inet_ntop(client_addr->ss_family, addr, ipaddress, INET6_ADDRSTRLEN);
+    char *p = buf;
+
+    req->method = p;
+    p = strchr(p, ' ');
+    if (!p)
+        return -1;
+    *p++ = '\0';
+
+    char *url = p;
+    p = strchr(p, ' ');
+    if (!p)
+        return -1;
+    *p++ = '\0';
+
+    req->version = p;
+    p = strstr(p, "\r\n");
+    if (!p)
+        return -1;
+    *p = '\0';
+
+    return parse_url(
+        strcmp(req->method, "CONNECT") == 0 ? "https" : "http",
+        url,
+        &req->url);
 }
 
-int main(int argc, char *argv[])
+static int connect_upstream(const char *host, const char *port)
+{
+    struct addrinfo hints = {0}, *res;
+    int fd;
+
+    hints.ai_socktype = SOCK_STREAM;
+    if (getaddrinfo(host, port, &hints, &res) != 0)
+        return -1;
+
+    fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (fd < 0 || connect(fd, res->ai_addr, res->ai_addrlen) < 0)
+        return -1;
+
+    freeaddrinfo(res);
+    return fd;
+}
+
+void *process(void *arg)
+{
+    int client_fd = *(int *)arg;
+    char buf[BUF_SIZE];
+    int total = 0, n;
+    while ((n = recv(client_fd, buf + total, BUF_SIZE - total, 0)) > 0)
+    {
+        total += n;
+        if (strstr(buf, "\r\n\r\n"))
+            break;
+    }
+
+    write(STDOUT_FILENO, buf, total);
+
+    Request req;
+    char *req_copy = strndup(buf, total);
+    if (parse_request(req_copy, &req) < 0)
+    {
+        close(client_fd);
+        free(req_copy);
+        return NULL;
+    }
+    int server_fd = connect_upstream(req.url.host, req.url.port);
+    if (server_fd < 0)
+    {
+        close(client_fd);
+        free(req_copy);
+        return NULL;
+    }
+
+    if (!strcmp(req.method, "CONNECT"))
+    {
+        if (send(client_fd, "HTTP/1.1 200 Connection Established\r\n\r\n", 39, 0) <= 0)
+        {
+            printf("Error making connection\n");
+        }
+        tunnel_https(client_fd, server_fd);
+        free(req_copy);
+        free(arg);
+        return NULL;
+    }
+
+    forward_http_request(server_fd, &req, buf, total); // sends the packet or first chunk
+
+    char *body = strstr(buf, "\r\n\r\n"); // remaining sent if available
+    if (body)
+    {
+        body += 4;
+        int body_len = total - (body - buf);
+        if (body_len > 0)
+            send_all(server_fd, body, body_len);
+    }
+
+    while ((n = recv(server_fd, buf, BUF_SIZE, 0)) > 0)
+        send_all(client_fd, buf, n);
+
+    free(req_copy);
+    free(arg);
+    return NULL;
+}
+
+int main(void)
 {
 
-    struct addrinfo hints, *res;
+    // signal(SIGPIPE, SIG_IGN);
 
-    int enable = 1;
+    int listen_fd, client_fd, server_fd;
+    char buf[BUF_SIZE];
+    int total = 0, n;
+    char *hdr_end;
 
-    memset(&hints, 0, sizeof(hints));
-
+    struct addrinfo hints = {0}, *res;
     hints.ai_family = AF_INET6;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
 
-    if (getaddrinfo(NULL, MYPORT, &hints, &res) != 0)
-    {
-        printf("Failure at getaddrinfo()\n");
-        exit(1);
-    }
+    if (getaddrinfo(NULL, LISTEN_PORT, &hints, &res) != 0)
+        die("getaddrinfo");
 
-    printf("Server family: %s\n",
-           res->ai_family == AF_INET ? "IPv4" : res->ai_family == AF_INET6 ? "IPv6"
-                                                                           : "Other");
+    listen_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (listen_fd < 0)
+        die("socket");
 
-    int sockfd;
-    if ((sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) == -1)
-    {
-        printf("Failure at socket()\n");
-        exit(EXIT_FAILURE);
-    }
+    int opt = 1;
+    setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) == -1)
-    {
-        printf("Failure at setsockopt()\n");
-        exit(EXIT_FAILURE);
-    }
+    if (bind(listen_fd, res->ai_addr, res->ai_addrlen) < 0)
+        die("bind");
 
-    if (bind(sockfd, res->ai_addr, res->ai_addrlen) == -1)
-    {
-        printf("Failure at bind()\n");
-        exit(EXIT_FAILURE);
-    }
+    if (listen(listen_fd, 10) < 0)
+        die("listen");
 
-    if (listen(sockfd, BACKLOG) == -1)
-    {
-        printf("Failure at listen()\n");
-        exit(EXIT_FAILURE);
-    }
+    freeaddrinfo(res);
 
-    struct sockaddr_storage client_addr;
-    socklen_t addr_len = sizeof(client_addr);
-    int clientfd;
-    if ((clientfd = accept(sockfd, (struct sockaddr *)&client_addr, &addr_len)) == -1)
-    {
-        printf("Failure at listen()\n");
-        exit(EXIT_FAILURE);
-    }
-
-    char ipaddress[INET6_ADDRSTRLEN];
-    getClientIP(&client_addr, ipaddress);
-    printf("Client connected IP : %s\n", ipaddress);
-    char buffer[4096];
-    int status = 0;
-    char *end;
     while (1)
     {
-        if ((status = recv(clientfd, buffer + status, sizeof(buffer) - status, 0)) == -1)
-        {
-            printf("Failure at recv()\n");
-            exit(EXIT_FAILURE);
-        }
-        if (status == 0)
-        {
-            printf("Server Closed the connection for you\n");
-            break;
-        }
-        else
-        {
-            if ((end = strstr(buffer, "\r\n\r\n")) != NULL)
-            {
-                break;
-            }
-        }
-    }
-    end += 4;
-    *end = '\0';
+        total = 0;
+        client_fd = accept(listen_fd, NULL, NULL);
+        if (client_fd < 0)
+            continue;
 
-    int i = 0;
-    while (buffer[i] != '\0')
-    {
-        if (buffer[i] == '\n')
-        {
-            putchar('\\');
-            putchar('n');
-            putchar('\n');
-        }
-        else if (buffer[i] == '\r')
-        {
-            putchar('\\');
-            putchar('r');
-        }
-        else
-        {
-            putchar(buffer[i]);
-        }
-        i++;
+        pthread_t p;
+        int *cfd = (int *)malloc(sizeof(int));
+        *cfd = client_fd;
+        pthread_create(&p, NULL, process, cfd);
     }
-    Packet data;
-    parse_packet(&data,buffer);
-    printf("%s\n",data.method);
-    printf("%s\n",data.url.scheme);
-    printf("%s\n",data.url.host);
-    printf("%s\n",data.url.port);
-    printf("%s\n",data.url.path);
-    printf("%s\n",data.version);
-    printf("%s\n",data.user_agent);
-    printf("%s\n",data.accept);
-    
 
-    close(clientfd);
-    close(sockfd);
+    close(listen_fd);
 
     return 0;
 }
