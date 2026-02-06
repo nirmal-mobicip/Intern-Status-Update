@@ -15,6 +15,8 @@
 #include <sys/epoll.h>
 #include <errno.h>
 
+#include "hashmap.c"
+
 #define LISTEN_PORT "8080"
 #define BUF_SIZE 16384
 #define MAX_EVENTS 10
@@ -48,11 +50,6 @@ typedef struct
     URL url;
 } Request;
 
-typedef struct
-{
-    int from;
-    int to;
-} Pipe;
 
 int send_all(int fd, const char *buf, int len)
 {
@@ -247,13 +244,12 @@ void addToEpollInterest(int epfd, Connection *c)
 void cleanup_connection(int epfd, Data *d)
 {
     if(d->connection->refs!=0){
-        epoll_ctl(epfd, EPOLL_CTL_DEL, d->connection->fd1, NULL);
-        epoll_ctl(epfd, EPOLL_CTL_DEL, d->connection->fd2, NULL);
+        epoll_ctl(epfd, EPOLL_CTL_DEL, d->fd, NULL);
         close(d->fd);
         d->connection->refs--;
         printf("Peer Connection Closed : %d\n",d->fd);
         if(d->connection->refs==0){
-            printf("Pair Full Closed connection : %d,%d\n",d->connection->fd1,d->connection->fd2); 
+            printf("Pair Full Connection Closed : %d,%d\n",d->connection->fd1,d->connection->fd2); 
             free(d->connection);   
         }
         free(d);
@@ -358,6 +354,9 @@ int main(void)
                         break;
                 }
                 write(STDOUT_FILENO, buf, total);
+                if(strstr(buf,"CONNECT")==NULL){
+                    
+                }
 
                 // connect to server
                 Request req;
@@ -429,6 +428,9 @@ int main(void)
                 }
                 else
                 {
+                    // if(from == temp->connection->fd2){
+                    //     write(STDOUT_FILENO,buf,n);
+                    // }
                     if ((n = send(to, buf, n, 0)) == 0)
                     {
                         cleanup_connection(epfd, temp);
