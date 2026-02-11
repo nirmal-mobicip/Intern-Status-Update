@@ -50,7 +50,6 @@ typedef struct
     URL url;
 } Request;
 
-
 int send_all(int fd, const char *buf, int len)
 {
     int sent = 0;
@@ -64,8 +63,68 @@ int send_all(int fd, const char *buf, int len)
     return sent;
 }
 
+int recv_all(int fd, char *buf, int maxlen)
+{
+    int total = 0;
+    int n;
+
+    while ((n = recv(fd, buf + total, maxlen - total, 0)) > 0)
+    {
+        total += n;
+
+        if (total >= maxlen)
+            break;
+    }
+
+    if (n < 0)
+        return -1;
+
+    return total;
+}
+char *recv_dynamic(int fd, int *out_len)
+{
+    int capacity = 8192;
+    int total = 0;
+    char *buffer = malloc(capacity);
+
+    if (!buffer)
+        return NULL;
+
+    while (1)
+    {
+        if (total >= capacity)
+        {
+            capacity *= 2;
+            char *tmp = realloc(buffer, capacity);
+            if (!tmp)
+            {
+                free(buffer);
+                return NULL;
+            }
+            buffer = tmp;
+        }
+
+        int n = recv(fd, buffer + total, capacity - total, 0);
+
+        if (n == 0)
+            break; // connection closed
+
+        if (n < 0)
+        {
+            free(buffer);
+            return NULL;
+        }
+
+        total += n;
+    }
+
+    *out_len = total;
+    return buffer;
+}
+
 void forward_http_request(int server_fd, Request *req, const char *buf, int total)
 {
+
     char out[BUF_SIZE];
     int n = 0;
 
@@ -209,15 +268,20 @@ void setNonBlock(int fd)
     int flags = fcntl(fd, F_GETFL, 0);
     fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
+void setBlock(int fd)
+{
+    int flags = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
+}
 
-void addToEpollInterest(int epfd, Connection *c)
+void addToEpollInterest(int epfd, Connection *c, Data *d1, Data *d2)
 {
     struct epoll_event ev;
 
-    Data *d1 = (Data *)malloc(sizeof(Data));
+    // d1 = (Data *)malloc(sizeof(Data));
     d1->fd = c->fd1;
     d1->connection = c;
-    c->refs+=1;
+    c->refs += 1;
     memset(&ev, 0, sizeof(ev));
     ev.events = EPOLLIN;
     ev.data.ptr = d1;
@@ -227,10 +291,10 @@ void addToEpollInterest(int epfd, Connection *c)
         exit(EXIT_FAILURE);
     }
 
-    Data *d2 = (Data *)malloc(sizeof(Data));
+    // d2 = (Data *)malloc(sizeof(Data));
     d2->fd = c->fd2;
     d2->connection = c;
-    c->refs+=1;
+    c->refs += 1;
     memset(&ev, 0, sizeof(ev));
     ev.events = EPOLLIN;
     ev.data.ptr = d2;
@@ -243,18 +307,64 @@ void addToEpollInterest(int epfd, Connection *c)
 
 void cleanup_connection(int epfd, Data *d)
 {
-    if(d->connection->refs!=0){
+    if (d->connection->refs != 0)
+    {
         epoll_ctl(epfd, EPOLL_CTL_DEL, d->fd, NULL);
         close(d->fd);
         d->connection->refs--;
-        printf("Peer Connection Closed : %d\n",d->fd);
-        if(d->connection->refs==0){
-            printf("Pair Full Connection Closed : %d,%d\n",d->connection->fd1,d->connection->fd2); 
-            free(d->connection);   
+        printf("Peer Connection Closed : %d\n", d->fd);
+        if (d->connection->refs == 0)
+        {
+            printf("Pair Full Connection Closed : %d,%d\n", d->connection->fd1, d->connection->fd2);
+            free(d->connection);
         }
         free(d);
     }
     return;
+}
+
+void cacheResponse(int server_fd, Request *req)
+{
+
+    int n;
+    char key[100] = "";
+    strcat(key, req->method);
+    strcat(key, req->url.host);
+    strcat(key, req->url.path);
+    printf("key : %s\n", key);
+    setBlock(server_fd);
+    // char resp[BUF_SIZE];
+
+    char *resp = recv_dynamic(server_fd, &n);
+    put(key, resp, n);
+
+    // if ((n = recv_all(server_fd, resp, sizeof(resp))) > 0)
+    // {
+    //     put(key, resp, n);
+    //     // printf("Response for cache : %s\n",resp);
+    //     printf("Cached Response Successfully!\n");
+    // }
+    setNonBlock(server_fd);
+}
+
+int RequestCached(Request *req)
+{
+    char key[100] = "";
+    strcat(key, req->method);
+    strcat(key, req->url.host);
+    strcat(key, req->url.path);
+    return isAvailable(key);
+}
+
+char *get_response(Request *req, int *len)
+{
+    char key[100] = "";
+    strcat(key, req->method);
+    strcat(key, req->url.host);
+    strcat(key, req->url.path);
+    HashNode *resp = get(key);
+    *len = resp->length;
+    return strdup(resp->value);
 }
 
 int main(void)
@@ -331,7 +441,7 @@ int main(void)
             if (eve & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
             {
                 // socket is broken
-                cleanup_connection(epfd,temp);
+                cleanup_connection(epfd, temp);
                 continue;
             }
 
@@ -354,9 +464,6 @@ int main(void)
                         break;
                 }
                 write(STDOUT_FILENO, buf, total);
-                if(strstr(buf,"CONNECT")==NULL){
-                    
-                }
 
                 // connect to server
                 Request req;
@@ -384,8 +491,11 @@ int main(void)
                 c->scheme = (strcmp(req.url.scheme, "http") == 0) ? 0 : 1;
                 c->refs = 0;
 
-                addToEpollInterest(epfd, c);
-                printf("Connection Created : %d,%d\n",client_fd,server_fd);
+                Data *d1 = (Data *)malloc(sizeof(Data));
+                Data *d2 = (Data *)malloc(sizeof(Data));
+
+                addToEpollInterest(epfd, c, d1, d2);
+                printf("Connection Created : %d,%d\n", client_fd, server_fd);
 
                 if (!strcmp(req.url.scheme, "https"))
                 {
@@ -396,14 +506,55 @@ int main(void)
                 }
                 else
                 {
-                    forward_http_request(server_fd, &req, buf, total); // sends the packet or first chunk
-                    char *body = strstr(buf, "\r\n\r\n");              // remaining sent if available
-                    if (body)
+                    if (!RequestCached(&req) && strcmp(req.method, "GET") == 0)
                     {
-                        body += 4;
-                        int body_len = total - (body - buf);
-                        if (body_len > 0)
-                            send_all(server_fd, body, body_len);
+                        printf("Request not Cached!!...Caching\n\n");
+
+                        forward_http_request(server_fd, &req, buf, total); // sends the packet or first chunk
+                        char *body = strstr(buf, "\r\n\r\n");              // remaining sent if available
+                        if (body)
+                        {
+                            body += 4;
+                            int body_len = total - (body - buf);
+                            if (body_len > 0)
+                                send_all(server_fd, body, body_len);
+                        }
+
+                        cacheResponse(server_fd, &req);
+
+                        int len;
+                        char *response = get_response(&req, &len);
+
+                        if (send(client_fd, response, len, 0) > 0)
+                        {
+                            printf("Response is Cached and being sent\n");
+                            cleanup_connection(epfd, d1);
+                            cleanup_connection(epfd, d2);
+                        }
+                    }
+                    else if (RequestCached(&req))
+                    {
+                        printf("Request is Cached....\n\n");
+                        int len;
+                        char *response = get_response(&req, &len);
+                        if (send_all(client_fd, response, len) > 0)
+                        {
+                            printf("Response Sent from Cache!\n");
+                            cleanup_connection(epfd, d1);
+                            cleanup_connection(epfd, d2);
+                        }
+                    }
+                    else
+                    {
+                        forward_http_request(server_fd, &req, buf, total); // sends the packet or first chunk
+                        char *body = strstr(buf, "\r\n\r\n");              // remaining sent if available
+                        if (body)
+                        {
+                            body += 4;
+                            int body_len = total - (body - buf);
+                            if (body_len > 0)
+                                send_all(server_fd, body, body_len);
+                        }
                     }
                 }
                 free(req_copy);

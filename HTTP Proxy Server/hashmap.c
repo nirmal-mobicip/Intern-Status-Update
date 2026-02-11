@@ -8,6 +8,7 @@ typedef struct HashNode
 {
     char *key;
     char *value;
+    int length;
     struct HashNode *next;
 } HashNode;
 
@@ -23,11 +24,12 @@ unsigned int hash(const char *key)
     return hash % MAX_TABLE_SIZE;
 }
 
-HashNode *createNode(char *key, char *value)
+HashNode *createNode(char *key, char *value, int len)
 {
     HashNode *node = (HashNode *)malloc(sizeof(HashNode));
     node->key = strdup(key);
     node->value = strdup(value);
+    node->length = len;
     node->next = NULL;
     return node;
 }
@@ -37,12 +39,12 @@ int isSameKeys(char *k1, char *k2)
     return strcmp(k1, k2) == 0;
 }
 
-void put(char *key, char *value)
+void put(char *key, char *value, int len)
 {
     unsigned int idx = hash(key);
     if (Table[idx] == NULL)
     {
-        Table[idx] = createNode(key, value);
+        Table[idx] = createNode(key, value, len);
     }
     else
     {
@@ -63,7 +65,7 @@ void put(char *key, char *value)
                 return;
             }
         }
-        temp->next = createNode(key, value);
+        temp->next = createNode(key, value, len);
     }
 }
 int isAvailable(char *key)
@@ -91,7 +93,7 @@ int isAvailable(char *key)
     return 0;
 }
 
-char *get(char *key)
+HashNode *get(char *key)
 {
     unsigned int idx = hash(key);
     HashNode *temp = Table[idx];
@@ -99,14 +101,14 @@ char *get(char *key)
     {
         if (isSameKeys(temp->key, key))
         {
-            return temp->value;
+            return temp;
         }
         while (temp->next != NULL)
         {
             temp = temp->next;
             if (isSameKeys(temp->key, key))
             {
-                return temp->value;
+                return temp;
             }
         }
     }
