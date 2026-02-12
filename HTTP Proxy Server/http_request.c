@@ -12,50 +12,10 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <pthread.h>
-#include <curl/curl.h>
+#include <openssl/evp.h>
 #include <time.h>
 
-
-typedef struct
-{
-    char *url; 
-    char *scheme;
-    char *host;
-    char *port;
-    char *path;
-} URL;
-
-char *normalize_url(const char *scheme, const char *url)
-{
-    if (strstr(url, "://"))
-        return strdup(url);
-
-    char *full = malloc(strlen(scheme) + strlen(url) + 4);
-    sprintf(full, "%s://%s", scheme, url);
-    return full;
-}
-
-
-int parse_url(const char *scheme, const char *url, URL *out)
-{
-    CURLU *u = curl_url();
-    char *full = normalize_url(scheme, url);
-    out->url = strdup(full);
-
-    if (!u || curl_url_set(u, CURLUPART_URL, full, 0) != CURLUE_OK)
-        return -1;
-
-    curl_url_get(u, CURLUPART_SCHEME, &out->scheme, 0);
-    curl_url_get(u, CURLUPART_HOST, &out->host, 0);
-    curl_url_get(u, CURLUPART_PATH, &out->path, 0);
-
-    if (curl_url_get(u, CURLUPART_PORT, &out->port, 0) != CURLUE_OK)
-        out->port = strdup(strcmp(out->scheme, "https") == 0 ? "443" : "80");
-
-    curl_url_cleanup(u);
-    free(full);
-    return 0;
-}
+#include "request.c"
 
 char *recv_dynamic(int fd, int *out_len)
 {
@@ -98,7 +58,6 @@ char *recv_dynamic(int fd, int *out_len)
     return buffer;
 }
 
-
 int get_server_socket(struct addrinfo *res)
 {
     struct addrinfo *p;
@@ -111,7 +70,7 @@ int get_server_socket(struct addrinfo *res)
         }
 
         int opt = 1;
-        setsockopt(sockfd,SOL_SOCKET,SO_REUSEADDR,&opt,sizeof(opt));
+        setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
         if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1)
         {
@@ -129,40 +88,95 @@ int get_server_socket(struct addrinfo *res)
     return sockfd;
 }
 
-
-char* prepare_http_packet(URL url,int proxy){
-    char* packet = (char*)malloc(100*sizeof(char));
-    snprintf(packet,100,"GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n",proxy ? url.url : url.path,url.host);
+char *prepare_http_packet(URL url, int proxy, int auth, char *auth_data, char *method,int data,char* d)
+{
+    if(strcmp(url.scheme,"https")==0){
+        method = strdup("CONNECT");
+    }
+    char *packet = (char *)malloc(4096 * sizeof(char));
+    if (auth)
+    {
+        unsigned char encoded[256];
+        EVP_EncodeBlock(encoded, (unsigned char *)auth_data, strlen(auth_data));
+        if(data){
+            snprintf(packet, 4096, "%s %s HTTP/1.1\r\nHost: %s\r\nContent-Length: %ld\r\nConnection: close\r\nProxy-Authorization: Basic %s\r\n\r\n%s", method, proxy ? url.url : url.path, url.host, strlen(d),encoded,(data && (strcmp(method,"PUT")==0 || strcmp(method,"POST")==0))?d:"");
+        }else{
+            snprintf(packet, 4096, "%s %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\nProxy-Authorization: Basic %s\r\n\r\n%s", method, proxy ? url.url : url.path, url.host,encoded,(data && (strcmp(method,"PUT")==0 || strcmp(method,"POST")==0))?d:"");
+        }
+    }
+    else
+    {
+        if(data){
+            snprintf(packet, 4096, "%s %s HTTP/1.1\r\nHost: %s\r\nContent-Length: %ld\r\nConnection: close\r\n\r\n%s", method,proxy ? url.url : url.path, url.host,strlen(d),(data && (strcmp(method,"PUT")==0 || strcmp(method,"POST")==0))?d:"");
+        }else{
+            snprintf(packet, 4096, "%s %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n%s", method,proxy ? url.url : url.path, url.host,(data && (strcmp(method,"PUT")==0 || strcmp(method,"POST")==0))?d:"");
+        }
+    }
     return packet;
 }
 
-int main(int argc,char* argv[])
+
+
+
+int main(int argc, char *argv[])
 {
 
-    int proxy = 0;
-    URL proxy_url,host_url;
+    int proxy = 0, auth = 0, data = 0, host = 0, method = 0;
+    URL proxy_url, host_url;
 
-    if(argc==4 && strcmp(argv[1],"-x")==0){
-        proxy = 1;
+    for (int i = 0; i < argc; i++)
+    {
+        if (strcmp(argv[i], "-x") == 0)
+        {
+            proxy = i;
+        }
+        else if (strcmp(argv[i], "-a") == 0)
+        {
+            auth = i;
+        }
+        else if (strcmp(argv[i], "-d") == 0)
+        {
+            data = i;
+        }
+        else if (strcmp(argv[i], "-h") == 0)
+        {
+            host = i;
+        }
+        else if (strcmp(argv[i], "-m") == 0)
+        {
+            method = i;
+        }
     }
 
-    if(proxy){
-        if(strstr(argv[2],"http")!=NULL){
-            parse_url("http",argv[2],&proxy_url);
-        }else{
-            parse_url("https",argv[2],&proxy_url);
+    if (proxy)
+    {
+        if (strstr(argv[proxy + 1], "http") != NULL)
+        {
+            parse_url("http", argv[proxy + 1], &proxy_url);
+        }
+        else
+        {
+            parse_url("https", argv[proxy + 1], &proxy_url);
         }
 
-        if(strstr(argv[3],"http")!=NULL){
-            parse_url("http",argv[3],&host_url);
-        }else{
-            parse_url("https",argv[3],&host_url);
+        if (strstr(argv[host + 1], "http") != NULL)
+        {
+            parse_url("http", argv[host + 1], &host_url);
         }
-    }else{
-        if(strstr(argv[1],"http")!=NULL){
-            parse_url("http",argv[1],&host_url);
-        }else{
-            parse_url("https",argv[1],&host_url);
+        else
+        {
+            parse_url("https", argv[host + 1], &host_url);
+        }
+    }
+    else
+    {
+        if (strstr(argv[host + 1], "http") != NULL)
+        {
+            parse_url("http", argv[host + 1], &host_url);
+        }
+        else
+        {
+            parse_url("https", argv[host + 1], &host_url);
         }
     }
 
@@ -171,19 +185,20 @@ int main(int argc,char* argv[])
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
-    getaddrinfo(proxy ? proxy_url.host:host_url.host,proxy ? proxy_url.port : host_url.port, &hints, &res);
+    getaddrinfo(proxy ? proxy_url.host : host_url.host, proxy ? proxy_url.port : host_url.port, &hints, &res);
     client_socket = get_server_socket(res);
     freeaddrinfo(res);
 
     printf("Connected to Server!\n");
 
-    char* request = prepare_http_packet(host_url,proxy);
+    char *request = prepare_http_packet(host_url, proxy, auth, auth ? argv[auth+1] : NULL,(method)?argv[method+1]:"GET",data,(data)?argv[data+1]:NULL);
 
-    send(client_socket,request,strlen(request),0);
+    
+    send(client_socket, request, strlen(request), 0);
 
     int len;
-    char* response = recv_dynamic(client_socket,&len);
-    write(STDOUT_FILENO,response,len);
+    char *response = recv_dynamic(client_socket, &len);
+    write(STDOUT_FILENO, response, len);
 
     return 0;
 }

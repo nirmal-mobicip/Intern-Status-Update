@@ -13,13 +13,18 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/epoll.h>
+#include <openssl/evp.h>
 #include <errno.h>
 
 #include "hashmap.c"
+#include "request.c"
+#include "proxy-auth.c"
 
 #define LISTEN_PORT "8080"
 #define BUF_SIZE 16384
 #define MAX_EVENTS 10
+
+int n = 0;
 
 typedef struct conn
 {
@@ -34,21 +39,6 @@ typedef struct data
     int fd;
     Connection *connection;
 } Data;
-
-typedef struct
-{
-    char *scheme;
-    char *host;
-    char *port;
-    char *path;
-} URL;
-
-typedef struct
-{
-    char *method;
-    char *version;
-    URL url;
-} Request;
 
 int send_all(int fd, const char *buf, int len)
 {
@@ -115,6 +105,8 @@ char *recv_dynamic(int fd, int *out_len)
             return NULL;
         }
 
+        if(buffer)
+
         total += n;
     }
 
@@ -122,9 +114,9 @@ char *recv_dynamic(int fd, int *out_len)
     return buffer;
 }
 
-void forward_http_request(int server_fd, Request *req, const char *buf, int total)
+void forward_http_request(int server_fd, Request *req,
+                          const char *buf, int total)
 {
-
     char out[BUF_SIZE];
     int n = 0;
 
@@ -135,14 +127,12 @@ void forward_http_request(int server_fd, Request *req, const char *buf, int tota
                   req->url.path ? req->url.path : "/",
                   req->version);
 
-    /* Copy headers line by line */
     const char *p = strstr(buf, "\r\n");
     if (!p)
         return;
     p += 2;
 
     int has_host = 0;
-    int has_connection = 0;
 
     while (p < buf + total && strncmp(p, "\r\n", 2) != 0)
     {
@@ -154,11 +144,12 @@ void forward_http_request(int server_fd, Request *req, const char *buf, int tota
         if (strncasecmp(p, "Proxy-Connection:", 17) == 0)
             goto next;
 
+        /* Skip Connection (we override it) */
+        if (strncasecmp(p, "Connection:", 11) == 0)
+            goto next;
+
         if (strncasecmp(p, "Host:", 5) == 0)
             has_host = 1;
-
-        if (strncasecmp(p, "Connection:", 11) == 0)
-            has_connection = 1;
 
         int len = line_end - p + 2;
         memcpy(out + n, p, len);
@@ -172,9 +163,9 @@ void forward_http_request(int server_fd, Request *req, const char *buf, int tota
         n += snprintf(out + n, sizeof(out) - n,
                       "Host: %s\r\n", req->url.host);
 
-    if (!has_connection)
-        n += snprintf(out + n, sizeof(out) - n,
-                      "Connection: close\r\n");
+    /* Always force close */
+    n += snprintf(out + n, sizeof(out) - n,
+                  "Connection: close\r\n");
 
     memcpy(out + n, "\r\n", 2);
     n += 2;
@@ -186,64 +177,6 @@ void die(const char *msg)
 {
     perror(msg);
     exit(EXIT_FAILURE);
-}
-
-char *normalize_url(const char *scheme, const char *url)
-{
-    if (strstr(url, "://"))
-        return strdup(url);
-
-    char *full = malloc(strlen(scheme) + strlen(url) + 4);
-    sprintf(full, "%s://%s", scheme, url);
-    return full;
-}
-
-int parse_url(const char *scheme, const char *url, URL *out)
-{
-    CURLU *u = curl_url();
-    char *full = normalize_url(scheme, url);
-
-    if (!u || curl_url_set(u, CURLUPART_URL, full, 0) != CURLUE_OK)
-        return -1;
-
-    curl_url_get(u, CURLUPART_SCHEME, &out->scheme, 0);
-    curl_url_get(u, CURLUPART_HOST, &out->host, 0);
-    curl_url_get(u, CURLUPART_PATH, &out->path, 0);
-
-    if (curl_url_get(u, CURLUPART_PORT, &out->port, 0) != CURLUE_OK)
-        out->port = strdup(strcmp(out->scheme, "https") == 0 ? "443" : "80");
-
-    curl_url_cleanup(u);
-    free(full);
-    return 0;
-}
-
-int parse_request(char *buf, Request *req)
-{
-    char *p = buf;
-
-    req->method = p;
-    p = strchr(p, ' ');
-    if (!p)
-        return -1;
-    *p++ = '\0';
-
-    char *url = p;
-    p = strchr(p, ' ');
-    if (!p)
-        return -1;
-    *p++ = '\0';
-
-    req->version = p;
-    p = strstr(p, "\r\n");
-    if (!p)
-        return -1;
-    *p = '\0';
-
-    return parse_url(
-        strcmp(req->method, "CONNECT") == 0 ? "https" : "http",
-        url,
-        &req->url);
 }
 
 static int connect_upstream(const char *host, const char *port)
@@ -310,6 +243,8 @@ void cleanup_connection(int epfd, Data *d)
     if (d->connection->refs != 0)
     {
         epoll_ctl(epfd, EPOLL_CTL_DEL, d->fd, NULL);
+        // close(d->connection->fd1);
+        // close(d->connection->fd2);
         close(d->fd);
         d->connection->refs--;
         printf("Peer Connection Closed : %d\n", d->fd);
@@ -323,9 +258,12 @@ void cleanup_connection(int epfd, Data *d)
     return;
 }
 
-void cacheResponse(int server_fd, Request *req)
+int cacheResponse(int server_fd, Request *req)
 {
-
+    if (strstr(req->url.host, "firefox"))
+    {
+        return 0;
+    }
     int n;
     char key[100] = "";
     strcat(key, req->method);
@@ -333,18 +271,12 @@ void cacheResponse(int server_fd, Request *req)
     strcat(key, req->url.path);
     printf("key : %s\n", key);
     setBlock(server_fd);
-    // char resp[BUF_SIZE];
 
     char *resp = recv_dynamic(server_fd, &n);
     put(key, resp, n);
 
-    // if ((n = recv_all(server_fd, resp, sizeof(resp))) > 0)
-    // {
-    //     put(key, resp, n);
-    //     // printf("Response for cache : %s\n",resp);
-    //     printf("Cached Response Successfully!\n");
-    // }
     setNonBlock(server_fd);
+    return 1;
 }
 
 int RequestCached(Request *req)
@@ -369,6 +301,12 @@ char *get_response(Request *req, int *len)
 
 int main(void)
 {
+
+    // authorized users
+
+    add_user("nirmal", "mobicipintern");
+    add_user("mobicipuser", "mobicip2026");
+
     struct epoll_event ev, event[MAX_EVENTS];
 
     int epfd = epoll_create1(0);
@@ -452,6 +390,7 @@ int main(void)
 
                 // accept client
                 int client_fd = accept(listen_fd, NULL, NULL);
+                printf("Connections : %d\n", ++n);
                 if (client_fd < 0)
                     continue;
 
@@ -464,6 +403,11 @@ int main(void)
                         break;
                 }
                 write(STDOUT_FILENO, buf, total);
+
+                if (!authorize(client_fd, buf))
+                {
+                    continue;
+                }
 
                 // connect to server
                 Request req;
@@ -520,7 +464,13 @@ int main(void)
                                 send_all(server_fd, body, body_len);
                         }
 
-                        cacheResponse(server_fd, &req);
+                        if (strstr(buf, "Connection: close"))
+                        {
+                            if (!cacheResponse(server_fd, &req))
+                            {
+                                continue;
+                            }
+                        }
 
                         int len;
                         char *response = get_response(&req, &len);
@@ -579,9 +529,6 @@ int main(void)
                 }
                 else
                 {
-                    // if(from == temp->connection->fd2){
-                    //     write(STDOUT_FILENO,buf,n);
-                    // }
                     if ((n = send(to, buf, n, 0)) == 0)
                     {
                         cleanup_connection(epfd, temp);
