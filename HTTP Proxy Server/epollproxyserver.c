@@ -319,7 +319,6 @@ int main(void)
     int listen_fd;
     char buf[BUF_SIZE];
     int total = 0, n;
-    char *hdr_end;
 
     struct addrinfo hints = {0}, *res;
     hints.ai_family = AF_INET6;
@@ -406,6 +405,7 @@ int main(void)
 
                 if (!authorize(client_fd, buf))
                 {
+                    close(client_fd);
                     continue;
                 }
 

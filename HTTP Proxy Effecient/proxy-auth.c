@@ -1,3 +1,5 @@
+#include <openssl/evp.h>
+
 typedef struct
 {
     char username[64], password[64];
@@ -69,12 +71,12 @@ int authorize(int client_fd,char *buf)
         {
             char *resp = "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm = \"MyProxy\"\r\nConnection : close\r\n";
             send(client_fd, resp, strlen(resp), 0);
-            printf("Proxy Authentication Failed\n");
+            printf("\nProxy Authentication Failed\n");
             return 0;
         }
         else
         {
-            printf("User is Proxy Authorized\n");
+            printf("\nUser is Proxy Authorized\n");
             return 1;
         }
     }
@@ -82,7 +84,7 @@ int authorize(int client_fd,char *buf)
     {
         char *resp = "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm = \"MyProxy\"\r\nConnection : close\r\n";
         send(client_fd, resp, strlen(resp), 0);
-        printf("Proxy Authentication Failed\n");
+        printf("\nProxy Authentication Failed\n");
         return 0;
     }
 }
