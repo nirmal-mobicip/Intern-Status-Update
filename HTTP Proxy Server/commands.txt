@@ -10,7 +10,7 @@ curl -x http://mobicipuser:mobicip2026@localhost:8080 \
 
 // PUT
 
-curl -v -x http://mobicipuser:mobicip2026@localhost:8080 \
+curl -v -x http://nirmal:mobicipintern@localhost:8080 \
      -X PUT \
      -d "test data" \
      http://httpbin.org/put

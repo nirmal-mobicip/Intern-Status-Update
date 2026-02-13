@@ -143,7 +143,7 @@ int main()
             else
             { // if it is a server or client socket
 
-                if (temp->fd == temp->connection->fd1 && temp->tunnel_mode == 0) // if client socket
+                if (temp->fd == temp->connection->fd1 && temp->tunnel_mode == 0 && temp->connection->authorized==0) // if client socket new connection
                 {
                     char request_packet[BUF_SIZE];
 
@@ -159,6 +159,8 @@ int main()
                     {
                         cleanup_connection(epfd,temp);
                         continue;
+                    }else{
+                        temp->connection->authorized = 1;
                     }
 
                     // parse request
@@ -217,50 +219,17 @@ int main()
                         printf("Request Sent to server!\n");
                     }
                 }
-                else if (temp->fd == temp->connection->fd1 && temp->tunnel_mode == 1)
-                {
+                else if(temp->connection->authorized)
+                { // just relay
 
-                    int n;
-                    char buf[BUF_SIZE];
-
-                    if ((n = recv(temp->fd, buf, sizeof(buf), 0)) == 0)
-                    {
-                        cleanup_connection(epfd, temp);
-                    }
-                    else if (n < 0)
-                    {
-                        if (errno == EAGAIN || errno == EWOULDBLOCK)
-                            continue;
-                        perror("recv()");
-                        cleanup_connection(epfd, temp);
-                    }
-                    else
-                    {
-                        // printf("Response Received from server!\n");
-                        if ((n = send(temp->connection->fd2, buf, n, 0)) == 0)
-                        {
-                            cleanup_connection(epfd, temp);
-                        }
-                        else if (n < 0)
-                        {
-                            if (errno == EAGAIN || errno == EWOULDBLOCK)
-                                continue;
-                            perror("send()");
-                            cleanup_connection(epfd, temp);
-                        }
-                    }
-                }
-                else
-                { // if server socket
-
-                    int server = temp->fd;
-                    int client = temp->connection->fd1 == server ? temp->connection->fd2 : temp->connection->fd1;
+                    int from = temp->fd;
+                    int to = temp->connection->fd1 == from ? temp->connection->fd2 : temp->connection->fd1;
                     int scheme = temp->connection->scheme;
 
                     int n;
                     char buf[BUF_SIZE];
 
-                    if ((n = recv(server, buf, sizeof(buf), 0)) == 0)
+                    if ((n = recv(from, buf, sizeof(buf), 0)) == 0)
                     {
                         cleanup_connection(epfd, temp);
                     }
@@ -273,8 +242,8 @@ int main()
                     }
                     else
                     {
-                        // printf("Response Received from server!\n");
-                        if ((n = send(client, buf, n, 0)) == 0)
+                        printf("Response Received from server!\n");
+                        if ((n = send(to, buf, n, 0)) == 0)
                         {
                             cleanup_connection(epfd, temp);
                         }

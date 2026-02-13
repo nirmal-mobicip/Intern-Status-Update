@@ -54,6 +54,7 @@ int validate(char *data)
 int authorize(int client_fd,char *buf)
 {
     char *ptr;
+    printf("Client FD : %d\nDATA : \n%s\n",client_fd,buf);
     if ((ptr = strstr(strdup(buf), "Proxy-Authorization: Basic ")))
     {
         ptr += 27;

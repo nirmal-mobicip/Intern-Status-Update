@@ -4,6 +4,7 @@ typedef struct conn
     int fd1;
     int fd2;
     int refs;
+    int authorized;
 } Connection;
 
 typedef struct data
@@ -28,6 +29,7 @@ Connection *createConnection(int client, int server)
     c->fd1 = client;
     c->fd2 = server;
     c->refs = 0;
+    c->authorized = 0;
     return c;
 }
 
