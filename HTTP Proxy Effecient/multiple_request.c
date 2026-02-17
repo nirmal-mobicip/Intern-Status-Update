@@ -8,10 +8,10 @@ int main()
 
     char *args[] = {
         "./http_request",
-        "-x","http://localhost:8080","-h", "http://example.com","-a","nirmal:mobicipintern","-m","GET",
+        "-x","http://localhost:8080","-h", "https://wikipedia.org","-a","nirmal:mobicipintern","-m","GET",
         NULL};
 
-    for (int i = 0; i < 1000; i++)
+    for (int i = 0; i < 100; i++)
     {
         if (fork() == 0)
         {

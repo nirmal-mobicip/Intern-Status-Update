@@ -1,0 +1,22 @@
+// CLIENT APP TEST COMMAND
+
+./http_request -x http://localhost:8080 -h http://httpbin.org/put -m PUT -d jellp -a nirmal:mobicipintern
+
+// DELETE
+
+curl -x http://mobicipuser:mobicip2026@localhost:8080 \
+     -X DELETE \
+     http://httpbin.org/delete
+
+// PUT
+
+curl -v -x http://nirmal:mobicipintern@localhost:8080 \
+     -X PUT \
+     -d "test data" \
+     http://httpbin.org/put
+
+// HEAD
+
+curl -x http://mobicipuser:mobicip2026@localhost:8080 \
+     -I \
+     http://httpbin.org/get
