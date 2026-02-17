@@ -19,6 +19,7 @@
 #include "proxy-auth.c"
 #include "data.c"
 #include "network.c"
+#include "hashmap.c"
 
 #define LISTEN_PORT "8080"
 #define BUF_SIZE 16384
@@ -45,54 +46,56 @@ int add_to_epoll(int epfd, Data *d)
 
 int main()
 {
-
+    initTable();
+    
     add_user("nirmal", "mobicipintern");
     add_user("mobicipuser", "mobicip2026");
-
+    
     struct epoll_event event[MAX_EVENTS];
-
+    
     int epfd = epoll_create1(0);
     if (epfd == -1)
     {
         perror("epoll_create1()");
         exit(EXIT_FAILURE);
     }
-
+    
     int listen_fd;
-
+    
     struct addrinfo hints = {0}, *res;
     hints.ai_family = AF_INET6;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
-
+    
     if (getaddrinfo(NULL, LISTEN_PORT, &hints, &res) != 0)
-        die("getaddrinfo()");
+    die("getaddrinfo()");
 
     listen_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (listen_fd < 0)
-        die("socket()");
+    die("socket()");
 
     setNonBlock(listen_fd);
-
+    
     int opt = 1;
     setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     if (bind(listen_fd, res->ai_addr, res->ai_addrlen) < 0)
         die("bind()");
-
+        
     if (listen(listen_fd, 10) < 0)
-        die("listen()");
+    die("listen()");
 
     freeaddrinfo(res);
-
+    
     Data *d = createData(listen_fd, NULL);
-
+    
     if (!add_to_epoll(epfd, d))
     {
         perror("epoll_ctl()");
         exit(EXIT_FAILURE);
     }
-
+    
+    printf("Server Started and Listening on port %s\n",LISTEN_PORT);
     while (1)
     {
 
@@ -143,23 +146,26 @@ int main()
             else
             { // if it is a server or client socket
 
-                if (temp->fd == temp->connection->fd1 && temp->tunnel_mode == 0 && temp->connection->authorized==0) // if client socket new connection
+                if (temp->fd == temp->connection->fd1 && temp->tunnel_mode == 0 && temp->connection->authorized == 0) // if client socket new connection
                 {
                     char request_packet[BUF_SIZE];
 
                     int len = recv(temp->fd, request_packet, sizeof(request_packet), 0);
 
-                    if (request_packet == NULL)
-                    {
+                    if(len<=0){
+                        cleanup_connection(epfd,temp);
                         continue;
                     }
+
                     write(STDOUT_FILENO, request_packet, len); // print request
 
                     if (!authorize(temp->fd, request_packet))
                     {
-                        cleanup_connection(epfd,temp);
+                        cleanup_connection(epfd, temp);
                         continue;
-                    }else{
+                    }
+                    else
+                    {
                         temp->connection->authorized = 1;
                     }
 
@@ -171,6 +177,22 @@ int main()
                         close(temp->fd);
                         free(req_copy);
                         continue;
+                    }
+                    
+                    // if http GET, then create key for hashmap and check in cache
+                    if (strcmp(req.method, "GET") == 0 && strcmp(req.url.scheme, "http") == 0)
+                    {
+                        temp->connection->key = getKeyfromRequest(&req); // for caching
+                        printf("Key : %s\n",temp->connection->key);
+
+                        HashNode* node;
+                        if(((node = get(temp->connection->key)))!=NULL){
+                            if(send(temp->fd,node->value,node->length,0)>0){
+                                printf("Successfully Returned Cached Data\n");
+                                cleanup_connection(epfd,temp);
+                                break;
+                            }
+                        }
                     }
 
                     // connect to server
@@ -185,7 +207,6 @@ int main()
                     setNonBlock(server_fd);
 
                     temp->connection->fd2 = server_fd;
-                    temp->connection->refs += 2;
                     temp->connection->scheme = (strcmp(req.url.scheme, "http") == 0) ? 0 : 1;
                     Data *d2 = createData(server_fd, temp->connection);
 
@@ -216,10 +237,10 @@ int main()
                             cleanup_connection(epfd, temp);
                             cleanup_connection(epfd, d2);
                         }
-                        printf("Request Sent to server!\n");
+                        // printf("Request Sent to server!\n");
                     }
                 }
-                else if(temp->connection->authorized)
+                else if (temp->connection->authorized)
                 { // just relay
 
                     int from = temp->fd;
@@ -242,7 +263,16 @@ int main()
                     }
                     else
                     {
-                        printf("Response Received from server!\n");
+                        // printf("Response Received from server!\n");
+                        
+                        // cache the response
+                        if (temp->connection->key != NULL)
+                        {
+                            printf("Response Cached!\n");
+                            put(temp->connection->key,buf,n);
+                        }
+
+
                         if ((n = send(to, buf, n, 0)) == 0)
                         {
                             cleanup_connection(epfd, temp);

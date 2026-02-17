@@ -19,6 +19,15 @@ typedef struct
     URL url;
 } Request;
 
+char* getKeyfromRequest(Request* req){
+    char* key = malloc(100*sizeof(char));
+    memset(key,0,100);
+    strcat(key, req->method);
+    strcat(key, req->url.host);
+    strcat(key, req->url.path);
+    return key;
+}
+
 char *normalize_url(const char *scheme, const char *url)
 {
     if (strstr(url, "://"))

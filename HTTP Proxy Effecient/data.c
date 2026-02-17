@@ -5,6 +5,7 @@ typedef struct conn
     int fd2;
     int refs;
     int authorized;
+    char* key;
 } Connection;
 
 typedef struct data
@@ -19,6 +20,9 @@ Data *createData(int fd, Connection *c)
     Data *d = (Data *)malloc(sizeof(Data));
     d->fd = fd;
     d->connection = c;
+    if(c!=NULL){
+        c->refs++;
+    }
     d->tunnel_mode = 0;
     return d;
 }
@@ -30,6 +34,7 @@ Connection *createConnection(int client, int server)
     c->fd2 = server;
     c->refs = 0;
     c->authorized = 0;
+    c->key = NULL;
     return c;
 }
 
