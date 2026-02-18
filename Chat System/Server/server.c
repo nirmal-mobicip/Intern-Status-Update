@@ -17,9 +17,42 @@
 // error
 #include <errno.h>
 
+// openssl
+#include <openssl/sha.h>
+#include <openssl/evp.h>
+
 #define MAX_EVENTS 10
 #define PORT "8080"
 #define MAX_BUF_SIZE 8192
+
+void create_accept_key(const char *client_key, char *output)
+{
+    const char *guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+    char combined[256];
+    sprintf(combined, "%s%s", client_key, guid);
+
+    unsigned char sha1_result[SHA_DIGEST_LENGTH];
+    SHA1((unsigned char*)combined, strlen(combined), sha1_result);
+
+    EVP_EncodeBlock((unsigned char*)output, sha1_result, SHA_DIGEST_LENGTH);
+}
+
+void send_handshake(int client_fd, const char *accept_key)
+{
+    char response[512];
+
+    sprintf(response,
+        "HTTP/1.1 101 Switching Protocols\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        "Sec-WebSocket-Accept: %s\r\n"
+        "\r\n",
+        accept_key);
+
+    send(client_fd, response, strlen(response), 0);
+}
+
 
 void close_connection(int epfd, int fd)
 {
@@ -157,6 +190,22 @@ int main(int argc, char *argv[])
                     continue;
                 }
                 
+                // recv request packet
+                char req[MAX_BUF_SIZE];
+                int n;
+                if((n = recv(client_fd,req,MAX_BUF_SIZE,0))>0){
+                    write(STDOUT_FILENO,req,n);
+                    putchar('\n');
+                }
+
+                char* client_key = strstr(req,"Sec-WebSocket-Key: ");
+                client_key+=19;
+                client_key = strndup(client_key,24);
+                
+                char accept_key[64];
+                create_accept_key(client_key,accept_key);
+                send_handshake(client_fd,accept_key);
+                                
                 setNonBlock(client_fd);
 
                 add_to_epoll(epfd,client_fd);
