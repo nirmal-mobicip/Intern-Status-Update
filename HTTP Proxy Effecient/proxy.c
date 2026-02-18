@@ -21,7 +21,6 @@
 #include "network.c"
 #include "hashmap.c"
 
-#define LISTEN_PORT "8080"
 #define BUF_SIZE 16384
 #define MAX_EVENTS 10
 
@@ -44,58 +43,58 @@ int add_to_epoll(int epfd, Data *d)
     return 1;
 }
 
-int main()
+int main(int argc, char *argv[])
 {
     initTable();
-    
+
     add_user("nirmal", "mobicipintern");
     add_user("mobicipuser", "mobicip2026");
-    
+
     struct epoll_event event[MAX_EVENTS];
-    
+
     int epfd = epoll_create1(0);
     if (epfd == -1)
     {
         perror("epoll_create1()");
         exit(EXIT_FAILURE);
     }
-    
+
     int listen_fd;
-    
+
     struct addrinfo hints = {0}, *res;
     hints.ai_family = AF_INET6;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
-    
-    if (getaddrinfo(NULL, LISTEN_PORT, &hints, &res) != 0)
-    die("getaddrinfo()");
+
+    if (getaddrinfo(NULL, argv[1], &hints, &res) != 0)
+        die("getaddrinfo()");
 
     listen_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (listen_fd < 0)
-    die("socket()");
+        die("socket()");
 
     setNonBlock(listen_fd);
-    
+
     int opt = 1;
     setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     if (bind(listen_fd, res->ai_addr, res->ai_addrlen) < 0)
         die("bind()");
-        
+
     if (listen(listen_fd, 10) < 0)
-    die("listen()");
+        die("listen()");
 
     freeaddrinfo(res);
-    
+
     Data *d = createData(listen_fd, NULL);
-    
+
     if (!add_to_epoll(epfd, d))
     {
         perror("epoll_ctl()");
         exit(EXIT_FAILURE);
     }
-    
-    printf("Server Started and Listening on port %s\n",LISTEN_PORT);
+
+    printf("Server Started and Listening on port %s\n", argv[1]);
     while (1)
     {
 
@@ -152,8 +151,9 @@ int main()
 
                     int len = recv(temp->fd, request_packet, sizeof(request_packet), 0);
 
-                    if(len<=0){
-                        cleanup_connection(epfd,temp);
+                    if (len <= 0)
+                    {
+                        cleanup_connection(epfd, temp);
                         continue;
                     }
 
@@ -178,18 +178,20 @@ int main()
                         free(req_copy);
                         continue;
                     }
-                    
+
                     // if http GET, then create key for hashmap and check in cache
                     if (strcmp(req.method, "GET") == 0 && strcmp(req.url.scheme, "http") == 0)
                     {
                         temp->connection->key = getKeyfromRequest(&req); // for caching
-                        printf("Key : %s\n",temp->connection->key);
+                        printf("Key : %s\n", temp->connection->key);
 
-                        HashNode* node;
-                        if(((node = get(temp->connection->key)))!=NULL){
-                            if(send(temp->fd,node->value,node->length,0)>0){
+                        HashNode *node;
+                        if (((node = get(temp->connection->key))) != NULL)
+                        {
+                            if (send(temp->fd, node->value, node->length, 0) > 0)
+                            {
                                 printf("Successfully Returned Cached Data\n");
-                                cleanup_connection(epfd,temp);
+                                cleanup_connection(epfd, temp);
                                 break;
                             }
                         }
@@ -264,14 +266,13 @@ int main()
                     else
                     {
                         // printf("Response Received from server!\n");
-                        
+
                         // cache the response
                         if (temp->connection->key != NULL)
                         {
                             printf("Response Cached!\n");
-                            put(temp->connection->key,buf,n);
+                            put(temp->connection->key, buf, n);
                         }
-
 
                         if ((n = send(to, buf, n, 0)) == 0)
                         {
