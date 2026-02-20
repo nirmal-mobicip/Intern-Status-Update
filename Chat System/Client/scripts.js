@@ -2,13 +2,23 @@ let username;
 
 while (!username) {
     username = prompt("ENTER USER NAME : ");
+    if (username === "broadcast") {
+        username = null;
+    }
 }
 
+const uname = document.getElementById("uname");
+uname.textContent = uname.textContent + username;
 
 const statusH = document.getElementById("status");
 const send = document.getElementById("send");
 const message = document.getElementById("message");
 const to = document.getElementById("to");
+const messages = document.getElementById("messages");
+const clients = document.getElementById("clients");
+
+const chat = {}
+const client_names = new Set();
 
 const socket = new WebSocket("ws://localhost:8080");
 
@@ -18,11 +28,11 @@ socket.onopen = () => {
     statusH.style.color = "green";
     send.disabled = false;
     const data = {
-            from: "client",
-            to: "server",
-            msg: username,
-        };
-        socket.send(JSON.stringify(data));
+        from: "client",
+        to: "server",
+        msg: username,
+    };
+    socket.send(JSON.stringify(data));
 };
 
 socket.onclose = () => {
@@ -37,7 +47,25 @@ socket.onerror = (error) => {
 };
 
 socket.onmessage = (event) => {
-    console.log("Message from server:", event.data);
+    obj = JSON.parse(event.data);
+    console.log(obj);
+    const entry = obj["from"] + " : " + obj["msg"] + "\n";
+    if (chat[obj["from"]] == null) {
+        chat[obj["from"]] = entry;
+    } else {
+        chat[obj["from"]] += entry;
+    }
+    messages.value += entry;
+    if(!(obj["from"].includes("BroadCast from")) && !client_names.has(obj["from"])){
+        // add to data item
+        if(!client_names.has(obj["to"])){
+            client_names.add(obj["to"]);
+            // add to dataitem
+            const child = document.createElement("option");
+            child.value = obj["to"];
+            clients.appendChild(child);            
+        }
+    }
 };
 
 
@@ -46,12 +74,30 @@ send.addEventListener("click", () => {
         console.log("Type Something and send");
     } else {
         const data = {
-            from: "nk",
-            to: to.value,
-            msg: message.value,
+            "from": username,
+            "to": to.value,
+            "msg": message.value,
         };
+        console.log("Sending obj");
+        console.log(data);
+
+        const entry = "You : " + data["msg"] + "\n";
+        if (chat[data["from"]] == null) {
+            chat[data["from"]] = entry;
+        } else {
+            chat[data["from"]] += entry;
+        }
+        messages.value += entry;
         socket.send(JSON.stringify(data));
         message.value = "";
+
+        if(!client_names.has(data["to"])){
+            client_names.add(data["to"]);
+            // add to dataitem
+            const child = document.createElement("option");
+            child.value = data["to"];
+            clients.appendChild(child);            
+        }
     }
 });
 
@@ -62,15 +108,35 @@ message.addEventListener("keypress", (e) => {
         } else {
 
             const data = {
-                from: "nk",
-                to: to.value,
-                msg: message.value,
+                "from": username,
+                "to": to.value,
+                "msg": message.value,
             };
+            console.log("Sending obj");
+            console.log(data);
+            messages.value += "You : " + data["msg"] + "\n";
             socket.send(JSON.stringify(data));
             message.value = "";
+
+            if(!client_names.has(data["to"])){
+            client_names.add(data["to"]);
+            // add to dataitem
+            const child = document.createElement("option");
+            child.value = data["to"];
+            clients.appendChild(child);            
+        }
         }
     }
 
 });
 
+to.addEventListener("input", e => {
+  console.log(e.target.value);
 
+    // add the content of user in textarea
+
+});
+
+to.addEventListener("focus", function () {
+  to.value = ""
+});

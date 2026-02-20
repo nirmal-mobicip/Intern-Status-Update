@@ -126,11 +126,12 @@ char *decode_ws_frame(unsigned char *buf, int *len, int *opcode, int *resp)
     return (char *)payload;
 }
 
-void close_connection(int epfd, int fd)
+void close_connection(int epfd, Client *c)
 {
-    epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
-    close(fd);
-    printf("Client Connection Closed : %d\n", fd);
+    epoll_ctl(epfd, EPOLL_CTL_DEL, c->fd, NULL);
+    close(c->fd);
+    printf("Client Connection Closed : %d\n", c->fd);
+    c->active = 0;
     return;
 }
 
@@ -213,6 +214,7 @@ int main(int argc, char *argv[])
 {
 
     initTable();
+    Client* list = NULL;
 
     // create epoll fd and event
     int epfd;
@@ -262,7 +264,7 @@ int main(int argc, char *argv[])
             if (eve & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
             {
                 // socket is broken
-                close_connection(epfd, fd);
+                close_connection(epfd, c);
                 continue;
             }
 
@@ -315,27 +317,74 @@ int main(int argc, char *argv[])
                 int n;
                 if ((n = recv(fd, frame, MAX_BUF_SIZE, 0)) > 0)
                 {
-                    Frame *f = parse_frame(frame, n);
+                    int opcode;
+                    Frame *f = parse_frame(frame, n, &opcode);
+                    if (opcode == 8)
+                    {
+                        printf("Client Closed Connection!\n");
+                        close_connection(epfd, c);
+                        free(f);
+                        continue;
+                    }
+                    Frame *f_copy = deep_copy(f);
                     printFrame(*f);
                     Message *m = parse_json_string(f->payload_data, f->payload_len);
                     printMessage(*m);
 
-                    if (!c->added && strcmp("client", m->from) == 0 && strcmp("server", m->to) == 0)
+                    if (!c->added && strcmp("client", m->from) == 0 && strcmp("server", m->to) == 0) // new user creation
                     {
 
                         c->added = 1;
                         c->username = strdup(m->message);
-                        put(m->message, c);
+                        if (!isAvailable(m->message))
+                        {
+                            put(m->message, c);
+                        }
+                        else
+                        {
+                            printf("User Already Exists\n");
+                            close_connection(epfd, c);
+                        }
                         printf("Client Added to Map!\n");
                     }
-                    else
+                    else if (c->added && c->active && strcmp(m->to, "broadcast") == 0)
                     {
-                        HashNode* to;
+                        uint8_t frame[1024];
+                        int len;
+                        free(f_copy->payload_data);
+                        f_copy->payload_data = (char *)malloc((f_copy->payload_len + 20) * sizeof(char));
+                        f_copy->payload_len = sprintf(f_copy->payload_data, "{\"from\":\"BroadCast from %s\",\"to\":\"%s\",\"msg\":\"%s\"}", m->from, m->to, m->message);
+                        createClientFrame(f_copy, frame, &len);
+
+                        // send to all
+
+                        for (int i = 0; i < MAX_TABLE_SIZE; i++)
+                        {
+                            HashNode *node = Table[i];
+                            if (node != NULL)
+                            {
+                                HashNode *temp = node;
+                                while (temp != NULL)
+                                {
+                                    if (temp->client->fd!=c->fd && temp->client->active)        // must not be the broadcaster and inactive client
+                                    {
+                                        send(temp->client->fd, frame, len, 0);
+                                    }
+                                    temp = temp->next;
+                                }
+                            }
+                        }
+                    }
+                    else // 1-1 message relay
+                    {
+                        HashNode *to;
 
                         if ((to = get(m->to)) != NULL)
                         {
-                            // prepare packet
-                            send(to->client->fd, m->message, m->message_len, 0);
+                            uint8_t frame[1024];
+                            int len;
+                            createClientFrame(f_copy, frame, &len);
+                            send(to->client->fd, frame, len, 0);
                             printf("Message sent to another peer\n");
                         }
                         else
@@ -344,13 +393,14 @@ int main(int argc, char *argv[])
                         }
                     }
 
-                    // free(m);
-                    // free(f);
+                    free(f_copy);
+                    free(f);
+                    free(m);
                 }
                 else
                 {
                     printf("Client Disconnected!\n");
-                    close_connection(epfd, fd);
+                    close_connection(epfd, c);
                 }
             }
         }

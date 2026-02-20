@@ -8,7 +8,14 @@
 <body>
     
     <h1 id="status">Not Connected!!</h1>
-    <input id="to" placeholder="To" value = "nirmal">
+    <h1 id="uname">Username : </h1>
+    <input id="to" list="clients" placeholder="To" value = "nirmal">
+    <datalist id="clients">
+        <option value="broadcast"></option>
+    </datalist>
+    <br>
+    <br>
+    <textarea rows="30" cols="100" id="messages"></textarea>
     <br>
     <br>
     <input id = message placeholder="Enter Message" value = hello>

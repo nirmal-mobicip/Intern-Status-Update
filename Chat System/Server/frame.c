@@ -1,19 +1,20 @@
 #include <stdint.h>
+#include <limits.h>
 
 typedef struct frame
 {
-    int fin ;
-    int rsv1 ;
-    int rsv2 ;
-    int rsv3 ;
-    int opcode ;
-    int mask ;
+    unsigned int fin:1;
+    unsigned int rsv1:1;
+    unsigned int rsv2:1;
+    unsigned int rsv3:1;
+    unsigned int opcode:4;
+    unsigned int mask:1;
     uint64_t payload_len;
     unsigned char mask_key[4];
     char *payload_data;
 } Frame;
 
-Frame *parse_frame(unsigned char *buf, int n)
+Frame *parse_frame(unsigned char *buf, int n, int* opcode)
 {
     Frame *res = (Frame *)malloc(sizeof(Frame));
 
@@ -27,6 +28,7 @@ Frame *parse_frame(unsigned char *buf, int n)
     res->rsv3 = (buf[0] & 0x10) >> 4;
     // opcode
     res->opcode = (buf[0] & 0x0F);
+    *opcode = res->opcode;
     // mask
     res->mask = (buf[1] & 0x80) >> 7;
     // payload_len
@@ -65,13 +67,30 @@ Frame *parse_frame(unsigned char *buf, int n)
     res->payload_data = (char *)malloc(res->payload_len * sizeof(char));
     memcpy(res->payload_data, next, res->payload_len);
 
-    if(res->mask){
-        for(uint64_t i = 0;i<res->payload_len;i++){
-            res->payload_data[i] ^= res->mask_key[i%4];
+    if (res->mask)
+    {
+        for (uint64_t i = 0; i < res->payload_len; i++)
+        {
+            res->payload_data[i] ^= res->mask_key[i % 4];
         }
     }
 
     return res;
+}
+
+Frame* deep_copy(Frame* f){
+    Frame* copy = (Frame*)malloc(sizeof(Frame));
+    copy->fin = f->fin;
+    copy->rsv1 = f->rsv1;
+    copy->rsv2 = f->rsv2;
+    copy->rsv3 = f->rsv3;
+    copy->opcode = f->opcode;
+    copy->mask = f->mask;
+    copy->payload_len = f->payload_len;
+    memcpy(copy->mask_key,f->mask_key,sizeof(f->mask_key));
+    copy->payload_data = (char*)malloc(f->payload_len*sizeof(char));
+    memcpy(copy->payload_data,f->payload_data,f->payload_len);
+    return copy;
 }
 
 void printFrame(Frame f)
@@ -84,4 +103,29 @@ void printFrame(Frame f)
     printf("MASK : %d\n", f.mask);
     printf("PAYLOAD LENGTH : %d\n", (int)f.payload_len);
     printf("PAYLOAD DATA : %.*s\n", (int)f.payload_len, f.payload_data);
+}
+
+void createClientFrame(Frame *f, uint8_t *buffer, int *len)
+{
+
+    // BYTE 0
+    buffer[0] = (f->fin & 1) << 7 | (f->rsv1 & 1) << 6 | (f->rsv2 & 1) << 5 | (f->rsv3 & 1) << 4 | (f->opcode & 0x0F);
+    // BYTE 1
+    int pos = 1;
+    if(f->payload_len<=125){
+        buffer[pos++] = f->payload_len;    // no need for mask bit as it is 0
+    }else if(f->payload_len>=126 && f->payload_len<=65,535){
+        buffer[pos++] = 126;
+        buffer[pos++] = (f->payload_len>>8) & 0xFF;
+        buffer[pos++] = f->payload_len & 0xFF;
+    }else{
+        buffer[1] = 127;
+        for(int i=7;i>=0;i--){
+            buffer[pos++] = (f->payload_len>>8*i) && 0xFF;
+        }
+    }
+
+    memcpy(&buffer[pos],f->payload_data,f->payload_len);
+    *len = pos+f->payload_len;
+    return;
 }
