@@ -1,142 +1,144 @@
+/* ---------- USERNAME ---------- */
+
 let username;
 
 while (!username) {
-    username = prompt("ENTER USER NAME : ");
-    if (username === "broadcast") {
+    username = prompt("ENTER USER NAME:");
+    if (!username || username.toLowerCase() === "broadcast") {
         username = null;
     }
 }
 
-const uname = document.getElementById("uname");
-uname.textContent = uname.textContent + username;
+const unameH = document.getElementById("uname");
+unameH.textContent += username;
+
+
+/* ---------- ELEMENTS ---------- */
 
 const statusH = document.getElementById("status");
-const send = document.getElementById("send");
-const message = document.getElementById("message");
-const to = document.getElementById("to");
-const messages = document.getElementById("messages");
-const clients = document.getElementById("clients");
+const sendBtn = document.getElementById("send");
+const messageBox = document.getElementById("message");
+const toInput = document.getElementById("to");
+const messagesArea = document.getElementById("messages");
+const clientsList = document.getElementById("clients");
 
-const chat = {}
-const client_names = new Set();
+
+/* ---------- DATA ---------- */
+
+const chat = {};                // conversation per user
+const clientNames = new Set();  // known clients
+
+
+/* ---------- WEBSOCKET ---------- */
 
 const socket = new WebSocket("ws://localhost:8080");
 
 socket.onopen = () => {
-    console.log("Connected to server");
+    console.log("Connected");
     statusH.textContent = "Connected";
     statusH.style.color = "green";
-    send.disabled = false;
-    const data = {
+    sendBtn.disabled = false;
+
+    // send username to server
+    socket.send(JSON.stringify({
         from: "client",
         to: "server",
-        msg: username,
-    };
-    socket.send(JSON.stringify(data));
+        msg: username
+    }));
 };
 
 socket.onclose = () => {
-    console.log("Disconnected from server");
+    console.log("Disconnected");
     statusH.textContent = "Disconnected";
     statusH.style.color = "red";
-    send.disabled = true;
+    sendBtn.disabled = true;
 };
 
-socket.onerror = (error) => {
-    console.log("Socket error:", error);
+socket.onerror = (err) => {
+    console.log("Socket error:", err);
 };
 
 socket.onmessage = (event) => {
-    obj = JSON.parse(event.data);
-    console.log(obj);
-    const entry = obj["from"] + " : " + obj["msg"] + "\n";
-    if (chat[obj["from"]] == null) {
-        chat[obj["from"]] = entry;
-    } else {
-        chat[obj["from"]] += entry;
-    }
-    messages.value += entry;
-    if(!(obj["from"].includes("BroadCast from")) && !client_names.has(obj["from"])){
-        // add to data item
-        if(!client_names.has(obj["to"])){
-            client_names.add(obj["to"]);
-            // add to dataitem
-            const child = document.createElement("option");
-            child.value = obj["to"];
-            clients.appendChild(child);            
-        }
-    }
+    const obj = JSON.parse(event.data);
+
+    const entry = obj.from + " : " + obj.msg + "\n";
+
+    addToChat(obj.from, entry);
+    messagesArea.value += entry;
+
+    addClient(obj.from);
 };
 
 
-send.addEventListener("click", () => {
-    if (message.value === "" || to.value === "") {
-        console.log("Type Something and send");
+/* ---------- FUNCTIONS ---------- */
+
+function addToChat(user, entry) {
+    if (!chat[user]) {
+        chat[user] = entry;
     } else {
-        const data = {
-            "from": username,
-            "to": to.value,
-            "msg": message.value,
-        };
-        console.log("Sending obj");
-        console.log(data);
-
-        const entry = "You : " + data["msg"] + "\n";
-        if (chat[data["from"]] == null) {
-            chat[data["from"]] = entry;
-        } else {
-            chat[data["from"]] += entry;
-        }
-        messages.value += entry;
-        socket.send(JSON.stringify(data));
-        message.value = "";
-
-        if(!client_names.has(data["to"])){
-            client_names.add(data["to"]);
-            // add to dataitem
-            const child = document.createElement("option");
-            child.value = data["to"];
-            clients.appendChild(child);            
-        }
+        chat[user] += entry;
     }
-});
+}
 
-message.addEventListener("keypress", (e) => {
+function addClient(name) {
+    if (!name || clientNames.has(name) || name === username) return;
+
+    clientNames.add(name);
+
+    const option = document.createElement("option");
+    option.value = name;
+    clientsList.appendChild(option);
+}
+
+function sendMessage() {
+    const msg = messageBox.value.trim();
+    const toUser = toInput.value.trim();
+
+    if (!msg || !toUser) {
+        console.log("Type message and recipient");
+        return;
+    }
+
+    const data = {
+        from: username,
+        to: toUser,
+        msg: msg
+    };
+
+    const entry = "You : " + msg + "\n";
+
+    addToChat(toUser, entry);
+    messagesArea.value += entry;
+
+    socket.send(JSON.stringify(data));
+
+    messageBox.value = "";
+
+    addClient(toUser);
+}
+
+
+/* ---------- EVENTS ---------- */
+
+sendBtn.addEventListener("click", sendMessage);
+
+messageBox.addEventListener("keypress", (e) => {
     if (e.key === "Enter") {
-        if (message.value === "" || to.value === "") {
-            console.log("Type Something and send");
-        } else {
-
-            const data = {
-                "from": username,
-                "to": to.value,
-                "msg": message.value,
-            };
-            console.log("Sending obj");
-            console.log(data);
-            messages.value += "You : " + data["msg"] + "\n";
-            socket.send(JSON.stringify(data));
-            message.value = "";
-
-            if(!client_names.has(data["to"])){
-            client_names.add(data["to"]);
-            // add to dataitem
-            const child = document.createElement("option");
-            child.value = data["to"];
-            clients.appendChild(child);            
-        }
-        }
+        e.preventDefault();
+        sendMessage();
     }
-
 });
 
-to.addEventListener("input", e => {
-  console.log(e.target.value);
+toInput.addEventListener("input", (e) => {
+    const user = e.target.value;
 
-    // add the content of user in textarea
-
+    if (!chat[user]) {
+        messagesArea.value = "";
+    } else {
+        messagesArea.value = chat[user];
+    }
 });
 
-to.addEventListener("focus", function () {
-  to.value = ""
+toInput.addEventListener("focus", () => {
+    toInput.value = "";
 });
