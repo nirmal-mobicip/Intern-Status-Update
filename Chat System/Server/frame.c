@@ -114,7 +114,7 @@ void createClientFrame(Frame *f, uint8_t *buffer, int *len)
     int pos = 1;
     if(f->payload_len<=125){
         buffer[pos++] = f->payload_len;    // no need for mask bit as it is 0
-    }else if(f->payload_len>=126 && f->payload_len<=65,535){
+    }else if(f->payload_len>=126 && f->payload_len<=65535){
         buffer[pos++] = 126;
         buffer[pos++] = (f->payload_len>>8) & 0xFF;
         buffer[pos++] = f->payload_len & 0xFF;

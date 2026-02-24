@@ -132,6 +132,7 @@ void close_connection(int epfd, Client *c)
     close(c->fd);
     printf("Client Connection Closed : %d\n", c->fd);
     c->active = 0;
+    removeKey(c->username);
     return;
 }
 
@@ -214,7 +215,6 @@ int main(int argc, char *argv[])
 {
 
     initTable();
-    Client* list = NULL;
 
     // create epoll fd and event
     int epfd;
