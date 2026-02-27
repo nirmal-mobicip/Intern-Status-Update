@@ -55,8 +55,7 @@ int main(int argc, char *argv[])
     int epfd = epoll_create1(0);
     if (epfd == -1)
     {
-        perror("epoll_create1()");
-        exit(EXIT_FAILURE);
+        die("epoll_create1()");
     }
 
     int listen_fd;

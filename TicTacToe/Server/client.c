@@ -1,12 +1,5 @@
 #include <stddef.h>
 
-typedef struct client{
-    int fd;
-    char* username;
-    int active : 1;
-    int connected : 1;
-    Match* currentMatch;
-}Client;
 
 typedef struct match{
     int matchID;
@@ -14,6 +7,14 @@ typedef struct match{
     int playerO;
     char board[3][3];
 }Match;
+
+typedef struct client{
+    int fd;
+    char* username;
+    int active : 1;
+    int connected : 1;
+    Match* currentMatch;
+}Client;
 
 Match* createMatch(int playerX,int playerO,int mid){
     Match* m = (Match*)malloc(sizeof(Match));

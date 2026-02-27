@@ -1,16 +1,4 @@
-
-/* ---------- LOAD SESSION ---------- */
-
-let username = localStorage.getItem("username");
-
-const savedChat = localStorage.getItem("chat");
-const savedClients = localStorage.getItem("clients");
-
-const chat = savedChat ? JSON.parse(savedChat) : {};
-const clientNames = new Set(savedClients ? JSON.parse(savedClients) : []);
-
-
-/* ---------- USERNAME ---------- */
+let username;
 
 if (!username) {
     while (!username) {
@@ -19,15 +7,12 @@ if (!username) {
             username = null;
         }
     }
-
-    localStorage.setItem("username", username);
 }
 
 const unameH = document.getElementById("uname");
 unameH.textContent += username;
 
 
-/* ---------- ELEMENTS ---------- */
 
 const statusH = document.getElementById("status");
 const sendBtn = document.getElementById("send");
@@ -35,26 +20,13 @@ const messageBox = document.getElementById("message");
 const toInput = document.getElementById("to");
 const messagesArea = document.getElementById("messages");
 const clientsList = document.getElementById("clients");
-const logOut = document.getElementById("logout");
-
-/* ---------- RESTORE CLIENTS ---------- */
-
-clientNames.forEach(name => {
-    const option = document.createElement("option");
-    option.value = name;
-    clientsList.appendChild(option);
-});
 
 
-// /* ---------- DATA ---------- */
-
-// const chat = {};                // conversation per user
-// const clientNames = new Set();  // known clients
+const chat = {};                // conversation per user
+const clientNames = new Set();  // known clients
 
 
-/* ---------- WEBSOCKET ---------- */
-
-const socket = new WebSocket("ws://[2409:40f4:2050:f204:ba8b:7175:ec39:fd6f]:8080");
+const socket = new WebSocket("ws://localhost:8080");
 
 socket.onopen = () => {
     console.log("Connected");
@@ -93,15 +65,12 @@ socket.onmessage = (event) => {
 };
 
 
-/* ---------- FUNCTIONS ---------- */
-
 function addToChat(user, entry) {
     if (!chat[user]) {
         chat[user] = entry;
     } else {
         chat[user] += entry;
     }
-    localStorage.setItem("chat", JSON.stringify(chat));
 }
 
 function addClient(name) {
@@ -112,7 +81,6 @@ function addClient(name) {
     const option = document.createElement("option");
     option.value = name;
     clientsList.appendChild(option);
-    localStorage.setItem("clients", JSON.stringify([...clientNames]));
 }
 
 function sendMessage() {
@@ -142,14 +110,6 @@ function sendMessage() {
     addClient(toUser);
 }
 
-function clearSession() {
-    localStorage.clear();
-    location.reload();
-}
-
-
-/* ---------- EVENTS ---------- */
-
 sendBtn.addEventListener("click", sendMessage);
 
 messageBox.addEventListener("keypress", (e) => {
@@ -173,5 +133,3 @@ toInput.addEventListener("focus", () => {
     toInput.value = "";
 });
 
-
-logOut.addEventListener("click",clearSession);
