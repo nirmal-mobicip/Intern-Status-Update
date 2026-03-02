@@ -6,6 +6,7 @@ typedef struct match{
     int playerX;
     int playerO;
     char board[3][3];
+    int moves;
 }Match;
 
 typedef struct client{
@@ -21,6 +22,7 @@ Match* createMatch(int playerX,int playerO,int mid){
     m->matchID = mid;
     m->playerX = playerX;
     m->playerO = playerO;
+    m->moves = 0;
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
             m->board[i][j] = ' ';

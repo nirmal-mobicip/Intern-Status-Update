@@ -129,3 +129,26 @@ void createClientFrameBuffer(Frame *f, uint8_t *buffer, int *len)
     *len = pos+f->payload_len;
     return;
 }
+
+void createFrame(int f,int r1,int r2,int r3,int opcode,int payload_len,char* payload_data,uint8_t *buffer,int *buflen){
+    // BYTE 0
+    buffer[0] = (f & 1) << 7 | (r1 & 1) << 6 | (r2 & 1) << 5 | (r3 & 1) << 4 | (opcode & 0x0F);
+    // BYTE 1
+    int pos = 1;
+    if(payload_len<=125){
+        buffer[pos++] = payload_len;    // no need for mask bit as it is 0
+    }else if(payload_len>=126 && payload_len<=65535){
+        buffer[pos++] = 126;
+        buffer[pos++] = (payload_len>>8) & 0xFF;
+        buffer[pos++] = payload_len & 0xFF;
+    }else{
+        buffer[1] = 127;
+        for(int i=7;i>=0;i--){
+            buffer[pos++] = (payload_len>>8*i) && 0xFF;
+        }
+    }
+
+    memcpy(&buffer[pos],payload_data,payload_len);
+    *buflen = pos+payload_len;
+    return;
+}

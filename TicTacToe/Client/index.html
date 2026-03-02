@@ -1,18 +1,38 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tic Tac Toe</title>
+    <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <h3 id="status">Connection status: Not Connected</h3>
 
     <button id="create" disabled>Create Match</button>
+    <input type="number" id="mid">
     <button id="join" disabled>Join Match</button>
     <hr>
-    <p> id="matchid">Match ID : </p>
+    <p id="matchid">Match ID : </p>
+    <hr>
+    <br>
+    <br>
+    <h3 id="movestatus"></h3>
+    <div class="board">
+        <button id="a0b0" class="cell" disabled></button>
+        <button id="a0b1" class="cell" disabled></button>
+        <button id="a0b2" class="cell" disabled></button>
+        <button id="a1b0" class="cell" disabled></button>
+        <button id="a1b1" class="cell" disabled></button>
+        <button id="a1b2" class="cell" disabled></button>
+        <button id="a2b0" class="cell" disabled></button>
+        <button id="a2b1" class="cell" disabled></button>
+        <button id="a2b2" class="cell" disabled></button>
+    </div>
 
     <script src="scripts.js"></script>
 </body>
+
 </html>

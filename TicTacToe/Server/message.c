@@ -48,3 +48,10 @@ void printMessage(Message *m){
     printf("Code : %s\n",m->code);
     printf("Message : %s\n",m->message);
 }
+
+char* create_message_json(int matchID,char player,char* code,char* message,int* len){
+    char* buffer = (char*)malloc(1000*sizeof(char));
+    int n = sprintf(buffer,"{\"matchid\":\"%d\",\"player\":\"%c\",\"code\":\"%s\",\"message\":\"%s\"}",matchID,player,code,message);
+    *len = n;
+    return buffer;
+}
