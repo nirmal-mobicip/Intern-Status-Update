@@ -9,7 +9,7 @@
 typedef struct HashNode
 {
     char *key;
-    Client *client;
+    Match *match;
     struct HashNode *next;
 } HashNode;
 
@@ -25,12 +25,12 @@ unsigned int hash(const char *key)
     return hash % MAX_TABLE_SIZE;
 }
 
-HashNode *createNode(char *key, Client *client)
+HashNode *createNode(char *key, Match *match)
 {
     HashNode *node = (HashNode *)malloc(sizeof(HashNode));
     node->key = strdup(key);
 
-    node->client = client;
+    node->match = match;
 
     node->next = NULL;
     return node;
@@ -41,20 +41,20 @@ int isSameKeys(char *k1, char *k2)
     return strcmp(k1, k2) == 0;
 }
 
-void put(char *key, Client *client)
+void put(char *key, Match *match)
 {
     unsigned int idx = hash(key);
     if (Table[idx] == NULL)
     {
-        Table[idx] = createNode(key, client);
+        Table[idx] = createNode(key, match);
     }
     else
     {
         HashNode *temp = Table[idx];
         if (isSameKeys(temp->key, key))
         {
-            free(temp->client);
-            temp->client = client;
+            free(temp->match);
+            temp->match = match;
             return;
         }
         while (temp->next != NULL)
@@ -62,12 +62,12 @@ void put(char *key, Client *client)
             temp = temp->next;
             if (isSameKeys(temp->key, key))
             {
-                free(temp->client);
-                temp->client = client;
+                free(temp->match);
+                temp->match = match;
                 return;
             }
         }
-        temp->next = createNode(key, client);
+        temp->next = createNode(key, match);
     }
 }
 int isAvailable(char *key)
@@ -126,7 +126,7 @@ void freeTable()
         {
             HashNode *next = temp->next;
             free(temp->key);
-            free(temp->client);
+            free(temp->match);
             free(temp);
             temp = next;
         }
@@ -152,7 +152,7 @@ void removeKey(char *key)
             HashNode *temp = Table[idx];
             Table[idx] = Table[idx]->next;
             free(temp->key);
-            free(temp->client);
+            free(temp->match);
             free(temp);
             return;
         }
@@ -164,7 +164,7 @@ void removeKey(char *key)
                 {
                     prev->next = curr->next;
                     free(curr->key);
-                    free(curr->client);
+                    free(curr->match);
                     free(curr);
                     return;
                 }

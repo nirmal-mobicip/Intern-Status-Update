@@ -10,7 +10,7 @@
 #include <errno.h>
 #include <unistd.h>
 
-#include "hashmap.c"
+#include "client.c"
 #include "websocket.c"
 #include "frame.c"
 #include "message.c"
@@ -144,43 +144,48 @@ int add_to_epoll(int epfd, Client *c)
 }
 void send_peer_close_response_to_another_peer(Match *m, int fd)
 {
-    int opponent;
-
-    if (m->playerX == fd)
-        opponent = m->playerO;
-    else
-        opponent = m->playerX;
-
-    if (opponent != -1)
+    if (m->players == 2)
     {
-        // Opponent wins by disconnect
-        uint8_t response_frame_buffer[1024];
-        int payload_len, response_frame_buffer_len;
+        int opponent;
 
-        char *payload_data = create_message_json(
-            m->matchID,
-            (m->playerX == opponent) ? 'X' : 'O',
-            "GAME_OVER",
-            "Opponent disconnected. You win!",
-            &payload_len);
+        m->players--;
 
-        createFrame(1, 0, 0, 0, 1,
-                    payload_len,
-                    payload_data,
-                    response_frame_buffer,
-                    &response_frame_buffer_len);
+        if (m->playerX == fd)
+            opponent = m->playerO;
+        else
+            opponent = m->playerX;
 
-        send(opponent,
-             response_frame_buffer,
-             response_frame_buffer_len,
-             0);
+        if (opponent != -1)
+        {
+            // Opponent wins by disconnect
+            uint8_t response_frame_buffer[1024];
+            int payload_len, response_frame_buffer_len;
 
-        free(payload_data);
-        printf("Client disconnect response sent to another peer!\n");
+            char *payload_data = create_message_json(
+                m->matchID,
+                (m->playerX == opponent) ? 'X' : 'O',
+                "GAME_OVER",
+                "Opponent disconnected. You win!",
+                &payload_len);
+
+            createFrame(1, 0, 0, 0, 1,
+                        payload_len,
+                        payload_data,
+                        response_frame_buffer,
+                        &response_frame_buffer_len);
+
+            send(opponent,
+                 response_frame_buffer,
+                 response_frame_buffer_len,
+                 0);
+
+            free(payload_data);
+            printf("Client disconnect response sent to another peer!\n");
+        }
+
+        matches[m->matchID] = NULL;
+        free(m);
     }
-
-    matches[m->matchID] = NULL;
-    free(m);
 }
 
 void close_connection(int epfd, Client *c)
@@ -190,6 +195,7 @@ void close_connection(int epfd, Client *c)
     printf("Client Connection Closed : %d\n", c->fd);
     c->active = 0;
     c->connected = 0;
+    free(c);
     return;
 }
 
@@ -303,7 +309,11 @@ int main()
                 {
                     printf("Client Closed Connection!\n");
 
-                    send_peer_close_response_to_another_peer(c->currentMatch, fd);
+                    if (c->currentMatch != NULL)
+                    {
+                        send_peer_close_response_to_another_peer(c->currentMatch, fd);
+                        c->currentMatch = NULL;
+                    }
 
                     close_connection(epfd, c);
                     free(recvframe);
@@ -318,6 +328,7 @@ int main()
                     Match *newMatch = createMatch(fd, -1, match_id++);
                     c->currentMatch = newMatch;
                     matches[newMatch->matchID] = newMatch;
+                    newMatch->players++;
 
                     uint8_t response_frame_buffer[1024];
                     int payload_len, response_frame_buffer_len;
@@ -336,9 +347,10 @@ int main()
                 {
                     int idx = atoi(recvmessage->message);
 
-                    if (matches[idx] != NULL && matches[idx]->playerX != -1 && matches[idx]->playerO == -1)
+                    if (matches[idx] != NULL && matches[idx]->playerX != -1 && matches[idx]->playerO == -1 && matches[idx]->players != 2)
                     {
                         matches[idx]->playerO = fd;
+                        matches[idx]->players++;
                         c->currentMatch = matches[idx];
 
                         uint8_t response_frame_buffer[1024];
