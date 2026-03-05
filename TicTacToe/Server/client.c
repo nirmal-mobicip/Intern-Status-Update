@@ -13,8 +13,9 @@ typedef struct match{
 typedef struct client{
     int fd;
     char* username;
-    int active : 1;
-    int connected : 1;
+    unsigned int handshake:1;
+    unsigned int active : 1;
+    unsigned int connected : 1;
     Match* currentMatch;
 }Client;
 
@@ -40,5 +41,6 @@ Client* createClient(int fd,Match* m){
     c->active = 1;
     c->connected = 0;
     c->currentMatch = m;
+    c->handshake = 0;
     return c;
 }

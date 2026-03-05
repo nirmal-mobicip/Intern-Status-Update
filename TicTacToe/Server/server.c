@@ -29,6 +29,23 @@ void die(char *str)
     exit(EXIT_FAILURE);
 }
 
+int send_response(int to, int m_id, char player, char *code, char *message)
+{
+    uint8_t response_frame_buffer[1024];
+    int payload_len, response_frame_buffer_len;
+    char *payload_data = create_message_json(m_id, player, code, message, &payload_len);
+    printf("%s\n", payload_data);
+    createFrame(1, 0, 0, 0, 1, payload_len, payload_data, response_frame_buffer, &response_frame_buffer_len);
+
+    if (send(to, response_frame_buffer, response_frame_buffer_len, 0) < 0)
+    {
+        free(payload_data);
+        return 0;
+    }
+    free(payload_data);
+    return 1;
+}
+
 void setNonBlock(int fd)
 {
     int flags = fcntl(fd, F_GETFL, 0);
@@ -193,8 +210,6 @@ void close_connection(int epfd, Client *c)
     epoll_ctl(epfd, EPOLL_CTL_DEL, c->fd, NULL);
     close(c->fd);
     printf("Client Connection Closed : %d\n", c->fd);
-    c->active = 0;
-    c->connected = 0;
     free(c);
     return;
 }
@@ -242,6 +257,8 @@ int main()
             int fd = c->fd;
             uint32_t eve = event[i].events;
 
+            printf("Handshaked : %d\n",c->handshake);
+
             if (eve & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
             {
                 // socket is broken
@@ -258,30 +275,6 @@ int main()
                     continue;
                 }
 
-                char req[MAX_BUF_SIZE];
-                int n;
-                if ((n = recv(client_fd, req, MAX_BUF_SIZE, 0)) > 0)
-                {
-                    write(STDOUT_FILENO, req, n);
-                    putchar('\n');
-                }
-
-                char *key_start = strstr(req, "Sec-WebSocket-Key: ");
-                if (!key_start)
-                    continue;
-
-                key_start += strlen("Sec-WebSocket-Key: ");
-                char *key_end = strstr(key_start, "\r\n");
-                if (!key_end)
-                    continue;
-
-                char client_key[128];
-                snprintf(client_key, sizeof(client_key), "%.*s",
-                         (int)(key_end - key_start), key_start);
-
-                char accept_key[64];
-                send_handshake(client_fd, client_key);
-
                 setNonBlock(client_fd);
 
                 Client *c = createClient(client_fd, NULL);
@@ -290,9 +283,49 @@ int main()
 
                 printf("New Client Connected : %d\n", client_fd);
             }
-            else
+            else if (c->handshake == 0)
             {
+                char req[MAX_BUF_SIZE];
+                int n;
+                if ((n = recv(c->fd, req, MAX_BUF_SIZE, 0)) > 0)
+                {
+                    write(STDOUT_FILENO, req, n);
+                    putchar('\n');
+                }
 
+                req[n] = '\0';
+
+                if (strstr(req, "Upgrade: websocket") != NULL && strstr(req, "Sec-WebSocket-Key") != NULL)
+                {
+                    char *key_start = strstr(req, "Sec-WebSocket-Key: ");
+                    if (!key_start)
+                        continue;
+
+                    key_start += strlen("Sec-WebSocket-Key: ");
+                    char *key_end = strstr(key_start, "\r\n");
+                    if (!key_end)
+                        continue;
+
+                    char client_key[128];
+                    snprintf(client_key, sizeof(client_key), "%.*s",
+                             (int)(key_end - key_start), key_start);
+
+                    char accept_key[64];
+                    send_handshake(c->fd, client_key);
+                    c->handshake = 1;
+                    printf("Handshake Done!!\n");
+                }
+                else
+                {
+                    char buffer[200];
+                    snprintf(buffer, 200, "Only Websockets are allowed!!\nHandshake not done\nClosing Connection\n");
+                    printf("%s\n", buffer);
+                    send(c->fd, buffer, strlen(buffer), 0);
+                    close_connection(epfd, c);
+                }
+            }
+            else if (c->handshake == 1)
+            {
                 char frameBuffer[MAX_BUF_SIZE];
                 int n;
 
@@ -330,18 +363,11 @@ int main()
                     matches[newMatch->matchID] = newMatch;
                     newMatch->players++;
 
-                    uint8_t response_frame_buffer[1024];
-                    int payload_len, response_frame_buffer_len;
-                    char *payload_data = create_message_json(newMatch->matchID, 'X', "MATCH_CREATED", " ", &payload_len);
-                    printf("%s\n", payload_data);
-                    createFrame(1, 0, 0, 0, 1, payload_len, payload_data, response_frame_buffer, &response_frame_buffer_len);
-
-                    if (send(fd, response_frame_buffer, response_frame_buffer_len, 0) < 0)
+                    if (send_response(fd, newMatch->matchID, 'X', "MATCH_CREATED", " ") == 0)
                     {
-                        printf("Not sent\n");
+                        printf("Not Sent\n");
+                        continue;
                     }
-
-                    free(payload_data);
                 }
                 else if (strcmp("JOIN_MATCH", recvmessage->code) == 0)
                 {
@@ -353,56 +379,39 @@ int main()
                         matches[idx]->players++;
                         c->currentMatch = matches[idx];
 
-                        uint8_t response_frame_buffer[1024];
-                        int payload_len, response_frame_buffer_len;
-                        char *payload_data = create_message_json(matches[idx]->matchID, 'Y', "MATCH_JOINED", " ", &payload_len);
-                        printf("%s\n", payload_data);
-                        createFrame(1, 0, 0, 0, 1, payload_len, payload_data, response_frame_buffer, &response_frame_buffer_len);
-
-                        if (send(fd, response_frame_buffer, response_frame_buffer_len, 0) < 0)
+                        if (send_response(fd, matches[idx]->matchID, 'O', "MATCH_JOINED", " ") == 0)
                         {
-                            printf("Not sent\n");
+                            printf("Not Sent\n");
+                            continue;
                         }
+
                         printf("%d joined match : %s\n", fd, recvmessage->matchid);
-                        free(payload_data);
 
                         // initialize board for both players
                         // for X
-                        payload_data = create_message_json(0, 'X', "INIT_BOARD", " ", &payload_len);
-                        printf("%s\n", payload_data);
-                        createFrame(1, 0, 0, 0, 1, payload_len, payload_data, response_frame_buffer, &response_frame_buffer_len);
 
-                        if (send(matches[idx]->playerX, response_frame_buffer, response_frame_buffer_len, 0) < 0)
+                        if (send_response(matches[idx]->playerX, 0, 'X', "INIT_BOARD", " ") == 0)
                         {
-                            printf("Not sent\n");
+                            printf("Not Sent\n");
+                            continue;
                         }
-                        free(payload_data);
 
                         // for O
-                        payload_data = create_message_json(0, 'Y', "INIT_BOARD", " ", &payload_len);
-                        printf("%s\n", payload_data);
-                        createFrame(1, 0, 0, 0, 1, payload_len, payload_data, response_frame_buffer, &response_frame_buffer_len);
 
-                        if (send(matches[idx]->playerO, response_frame_buffer, response_frame_buffer_len, 0) < 0)
+                        if (send_response(matches[idx]->playerO, 0, 'O', "INIT_BOARD", " ") == 0)
                         {
-                            printf("Not sent\n");
+                            printf("Not Sent\n");
+                            continue;
                         }
-                        free(payload_data);
                     }
                     else
                     {
-                        uint8_t response_frame_buffer[1024];
-                        int payload_len, response_frame_buffer_len;
-                        char *payload_data = create_message_json(0, 'Y', "MATCH_JOIN_FAILED", " ", &payload_len);
-                        printf("%s\n", payload_data);
-                        createFrame(1, 0, 0, 0, 1, payload_len, payload_data, response_frame_buffer, &response_frame_buffer_len);
-
-                        if (send(fd, response_frame_buffer, response_frame_buffer_len, 0) < 0)
+                        if (send_response(fd, 0, 'O', "MATCH_JOIN_FAILED", " ") == 0)
                         {
-                            printf("Not sent\n");
+                            printf("Not Sent\n");
+                            continue;
                         }
-                        printf("%d failed to join match : %s\n", fd, recvmessage->matchid);
-                        free(payload_data);
+                        printf("%d failed to join match : %s\n", fd, recvmessage->message);
                     }
                 }
                 else if (strcmp("MOVE", recvmessage->code) == 0)
@@ -410,17 +419,11 @@ int main()
                     // client update
                     int receiver = recvmessage->player == 'X' ? c->currentMatch->playerO : c->currentMatch->playerX;
 
-                    uint8_t response_frame_buffer[1024];
-                    int payload_len, response_frame_buffer_len;
-                    char *payload_data = create_message_json(atoi(recvmessage->matchid), recvmessage->player, recvmessage->code, recvmessage->message, &payload_len);
-                    printf("%s\n", payload_data);
-                    createFrame(1, 0, 0, 0, 1, payload_len, payload_data, response_frame_buffer, &response_frame_buffer_len);
-
-                    if (send(receiver, response_frame_buffer, response_frame_buffer_len, 0) < 0)
+                    if (send_response(receiver, atoi(recvmessage->matchid), recvmessage->player, recvmessage->code, recvmessage->message) == 0)
                     {
-                        printf("Not sent\n");
+                        printf("Not Sent\n");
+                        continue;
                     }
-                    free(payload_data);
 
                     // server update
 
@@ -442,29 +445,20 @@ int main()
                         sprintf(win, "Player %c Won!!", res);
 
                         // response to X
-                        response_frame_buffer[1024];
-                        payload_len, response_frame_buffer_len;
-                        payload_data = create_message_json(atoi(recvmessage->matchid), 'X', "GAME_OVER", win, &payload_len);
-                        printf("%s\n", payload_data);
-                        createFrame(1, 0, 0, 0, 1, payload_len, payload_data, response_frame_buffer, &response_frame_buffer_len);
-                        if (send(c->currentMatch->playerX, response_frame_buffer, response_frame_buffer_len, 0) < 0)
+
+                        if (send_response(c->currentMatch->playerX, atoi(recvmessage->matchid), 'X', "GAME_OVER", win) == 0)
                         {
-                            printf("Not sent\n");
+                            printf("Not Sent\n");
+                            continue;
                         }
-                        free(payload_data);
 
                         // response to Y
 
-                        response_frame_buffer[1024];
-                        payload_len, response_frame_buffer_len;
-                        payload_data = create_message_json(atoi(recvmessage->matchid), 'O', "GAME_OVER", win, &payload_len);
-                        printf("%s\n", payload_data);
-                        createFrame(1, 0, 0, 0, 1, payload_len, payload_data, response_frame_buffer, &response_frame_buffer_len);
-                        if (send(c->currentMatch->playerO, response_frame_buffer, response_frame_buffer_len, 0) < 0)
+                        if (send_response(c->currentMatch->playerO, atoi(recvmessage->matchid), 'O', "GAME_OVER", win) == 0)
                         {
-                            printf("Not sent\n");
+                            printf("Not Sent\n");
+                            continue;
                         }
-                        free(payload_data);
 
                         matches[c->currentMatch->matchID] = NULL;
                         free(c->currentMatch);
@@ -477,34 +471,27 @@ int main()
                         printf("%c DRAW\n", res);
 
                         // response to X
-                        response_frame_buffer[1024];
-                        payload_len, response_frame_buffer_len;
-                        payload_data = create_message_json(atoi(recvmessage->matchid), 'X', "GAME_OVER", "Match Draw", &payload_len);
-                        printf("%s\n", payload_data);
-                        createFrame(1, 0, 0, 0, 1, payload_len, payload_data, response_frame_buffer, &response_frame_buffer_len);
-                        if (send(c->currentMatch->playerX, response_frame_buffer, response_frame_buffer_len, 0) < 0)
+
+                        if (send_response(c->currentMatch->playerX, atoi(recvmessage->matchid), 'X', "GAME_OVER", "Match Draw") == 0)
                         {
-                            printf("Not sent\n");
+                            printf("Not Sent\n");
+                            continue;
                         }
-                        free(payload_data);
 
                         // response to Y
 
-                        response_frame_buffer[1024];
-                        payload_len, response_frame_buffer_len;
-                        payload_data = create_message_json(atoi(recvmessage->matchid), 'O', "GAME_OVER", "Match Draw", &payload_len);
-                        printf("%s\n", payload_data);
-                        createFrame(1, 0, 0, 0, 1, payload_len, payload_data, response_frame_buffer, &response_frame_buffer_len);
-                        if (send(c->currentMatch->playerO, response_frame_buffer, response_frame_buffer_len, 0) < 0)
+                        if (send_response(c->currentMatch->playerO, atoi(recvmessage->matchid), 'O', "GAME_OVER", "Match Draw") == 0)
                         {
-                            printf("Not sent\n");
+                            printf("Not Sent\n");
+                            continue;
                         }
-                        free(payload_data);
 
                         matches[c->currentMatch->matchID] = NULL;
                         free(c->currentMatch);
                     }
                 }
+                free(recvmessage);
+                free(recvframe);
             }
         }
     }
