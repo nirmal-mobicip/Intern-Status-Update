@@ -1,0 +1,27 @@
+{
+    "manifest_version": 3,
+    "name": "Quick API Reference",
+    "version": "1.0.0",
+    "icons": {
+        "16": "images/icon-16.png",
+        "128": "images/icon-128.png"
+    },
+    "background": {
+        "service_worker": "service_worker.js",
+        "type": "module"
+    },
+    "permissions": [
+        "storage",
+        "alarms"
+    ],
+    "minimum_chrome_version": "102",
+    "omnibox": {
+        "keyword": "api"
+    },
+    "content_scripts": [
+    {
+      "matches": ["https://developer.chrome.com/docs/extensions/reference/*"],
+      "js": ["content.js"]
+    }
+  ]
+}
